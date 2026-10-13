@@ -36,14 +36,14 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         // Close menu when clicking on a link
-        navLinks.querySelectorAll('a').forEach(link => {
-            link.addEventListener('click', function() {
+        navLinks.addEventListener('click', function(event) {
+            if (event.target.closest('a')) {
                 navLinks.classList.remove('open');
                 hamburger.classList.remove('open');
                 hamburger.setAttribute('aria-expanded', 'false');
                 hamburger.setAttribute('aria-label', 'Open navigation menu');
                 hamburger.textContent = '☰';
-            });
+            }
         });
         
         // Close menu when clicking outside

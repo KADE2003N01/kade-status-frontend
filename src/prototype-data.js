@@ -1,66 +1,5 @@
 (function () {
-    const CONTENT_KEY = 'kade-portfolio-content';
-
-    const defaultContent = {
-        title: "I'm a Developer",
-        subtitle: 'Computer Science Student | Frontend Developer',
-        intro: 'I build responsive and modern web interfaces. Turning ideas into clean, user-friendly experiences through code.'
-    };
-
-    function readJson(key, fallback) {
-        try {
-            const value = localStorage.getItem(key);
-            return value ? JSON.parse(value) : fallback;
-        } catch (error) {
-            console.error(`Could not read prototype data for ${key}:`, error);
-            throw new Error('Saved portfolio data could not be read in this browser.');
-        }
-    }
-
-    function writeJson(key, value) {
-        try {
-            localStorage.setItem(key, JSON.stringify(value));
-        } catch (error) {
-            console.error(`Could not save prototype data for ${key}:`, error);
-            throw new Error('Portfolio data could not be saved in this browser.');
-        }
-    }
-
-    window.PortfolioPrototype = {
-        defaultContent,
-        getContent() {
-            return { ...defaultContent, ...readJson(CONTENT_KEY, {}) };
-        },
-        saveContent(content) {
-            writeJson(CONTENT_KEY, {
-                title: String(content.title).trim(),
-                subtitle: String(content.subtitle).trim(),
-                intro: String(content.intro).trim()
-            });
-        },
-        resetContent() {
-            localStorage.removeItem(CONTENT_KEY);
-        },
-    };
-
     document.addEventListener('DOMContentLoaded', () => {
-        const title = document.getElementById('dynamic-title');
-        const subtitle = document.getElementById('homepage-subtitle');
-        const intro = document.getElementById('homepage-intro');
-        if (title || subtitle || intro) {
-            try {
-                const content = window.PortfolioPrototype.getContent();
-                if (title) {
-                    title.textContent = content.title;
-                    title.dataset.text = content.title;
-                }
-                if (subtitle) subtitle.textContent = content.subtitle;
-                if (intro) intro.textContent = content.intro;
-            } catch (error) {
-                console.error('Could not load the homepage preview content:', error);
-            }
-        }
-
         const requestForm = document.getElementById('download-request-form');
         if (requestForm) initializeDownloadForm(requestForm);
         const certificateList = document.querySelector('.certificate-add-slot')?.parentElement;
@@ -84,10 +23,15 @@
 
         const cv = result.documents.find((item) => item.documentId === 'cv');
         if (cv) {
+            document.querySelector('#cv-public-title').textContent = cv.title;
             document.querySelector('#cv-public-file-name').textContent = cv.filename;
             document.querySelector('#cv-public-description').textContent = cv.description;
             const updatedDate = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric' }).format(new Date(cv.updatedAt));
             document.querySelector('#cv-last-updated').textContent = updatedDate;
+            document.querySelector('#cv-public-meta').textContent = [
+                cv.institution,
+                cv.issuedAt ? new Intl.DateTimeFormat(undefined, { month: 'short', year: 'numeric' }).format(new Date(`${cv.issuedAt}T00:00:00`)) : ''
+            ].filter(Boolean).join(' · ') || 'Professional Resume';
         }
 
         const ebc = result.documents.find((item) => item.documentId === 'ebc');
@@ -123,7 +67,7 @@
                 <button class="doc-card-button doc-btn-outline" type="button" data-download><i class="fas fa-download" aria-hidden="true"></i>Download</button>
             </div>
             <div class="document-preview-panel" hidden>
-                <div class="document-preview-heading"><h3></h3><button type="button" class="doc-card-button doc-btn-outline" data-authorized-download><i class="fas fa-download" aria-hidden="true"></i>Download certificate</button></div>
+                <div class="document-preview-heading"><h3></h3></div>
                 <iframe class="document-preview-frame" title="Certificate preview"></iframe>
             </div>
             <div class="public-certificate-meta"><span data-issued></span><span data-institution></span></div>
@@ -138,13 +82,10 @@
         const previewFrame = card.querySelector('iframe');
 
         card.querySelector('[data-preview]').addEventListener('click', () => {
-            window.requestDocumentDownload(certificate.documentId, 'preview');
+            window.previewDocument(certificate.documentId);
         });
         card.querySelector('[data-download]').addEventListener('click', () => {
-            window.requestDocumentDownload(certificate.documentId, 'download');
-        });
-        card.querySelector('[data-authorized-download]').addEventListener('click', () => {
-            window.downloadAuthorizedDocument(certificate.documentId);
+            window.requestDocumentDownload(certificate.documentId);
         });
         card.dataset.previewPanel = `${certificate.documentId}-preview-panel`;
         card.dataset.previewFrame = `${certificate.documentId}-preview-frame`;
@@ -158,12 +99,112 @@
         const status = document.getElementById('download-form-status');
         const email = document.getElementById('download-email');
         const phone = document.getElementById('download-phone');
+        const requestFields = document.getElementById('download-request-fields');
+        const verificationFields = document.getElementById('download-verification-fields');
+        const codeActions = document.getElementById('download-code-actions');
+        const verificationCode = document.getElementById('download-verification-code');
+        const submitButton = document.getElementById('download-submit');
+        const emailCodeButton = document.getElementById('send-email-code');
+        const smsCodeButton = document.getElementById('send-sms-code');
+        const verifyCodeButton = document.getElementById('verify-download-code');
+        const changeContactButton = document.getElementById('download-change-email');
+        const channelHint = document.getElementById('verification-channel-hint');
+        const contactHint = document.getElementById('download-contact-hint');
+        let challengeId = '';
+        let verificationChannel = '';
+        let verifiedAuthorization = null;
 
-        window.requestDocumentDownload = (documentId, action = 'download') => {
-            lastFocusedElement = document.activeElement;
+        function updateCodeButtons() {
+            if (challengeId) {
+                emailCodeButton.hidden = true;
+                smsCodeButton.hidden = true;
+                emailCodeButton.disabled = true;
+                smsCodeButton.disabled = true;
+                codeActions.hidden = true;
+                return;
+            }
+            const hasEmail = Boolean(email.value.trim());
+            const hasPhone = Boolean(phone.value.trim());
+            const hasBoth = hasEmail && hasPhone;
+            const validPhone = /^\+[1-9]\d{7,14}$/.test(phone.value.trim());
+            emailCodeButton.hidden = !hasEmail || hasBoth;
+            smsCodeButton.hidden = !hasPhone || hasBoth;
+            emailCodeButton.disabled = !hasEmail || hasBoth || !email.checkValidity();
+            smsCodeButton.disabled = !hasPhone || hasBoth || !validPhone;
+            codeActions.hidden = hasBoth || (!hasEmail && !hasPhone);
+            contactHint.classList.toggle('error', hasBoth || (hasEmail && !email.checkValidity()) || (hasPhone && !validPhone));
+            if (hasBoth) {
+                contactHint.textContent = 'Use one contact method only. Clear either the email or phone field to continue.';
+            } else if (hasEmail && !email.checkValidity()) {
+                contactHint.textContent = 'Enter a valid email address to receive your verification code.';
+            } else if (hasPhone && !validPhone) {
+                contactHint.textContent = 'Enter a valid phone number in international format, such as +250788123456.';
+            } else if (hasEmail) {
+                contactHint.textContent = 'We’ll send the verification code to this email address.';
+            } else if (hasPhone) {
+                contactHint.textContent = 'We’ll send the verification code to this phone number.';
+            } else {
+                contactHint.textContent = 'Enter either an email address or a phone number—not both.';
+            }
+        }
+
+        function resetVerification() {
+            challengeId = '';
+            verificationChannel = '';
+            verifiedAuthorization = null;
+            requestFields.querySelectorAll('input, textarea').forEach((input) => { input.disabled = false; });
+            requestFields.hidden = false;
+            codeActions.hidden = false;
+            updateCodeButtons();
+            verificationFields.hidden = true;
+            verificationCode.value = '';
+            verificationCode.disabled = false;
+            verificationCode.required = false;
+            verifyCodeButton.hidden = false;
+            changeContactButton.hidden = false;
+            submitButton.hidden = true;
+        }
+
+        function resetFormState() {
             form.reset();
+            resetVerification();
+        }
+
+        window.previewDocument = async (documentId) => {
+            const panel = document.getElementById(`${documentId}-preview-panel`);
+            const frame = document.getElementById(`${documentId}-preview-frame`);
+            const feedback = document.getElementById('documents-feedback');
+            if (!panel || !frame) {
+                if (feedback) feedback.textContent = 'The preview area for this document is unavailable.';
+                return;
+            }
+            if (feedback) feedback.textContent = 'Loading document preview…';
+            try {
+                const response = await fetch(
+                    `${window.PORTFOLIO_API_BASE_URL}/downloads/preview/${encodeURIComponent(documentId)}`
+                );
+                if (!response.ok) {
+                    const result = await response.json();
+                    throw new Error(result.error || 'The document preview could not be loaded.');
+                }
+                const previewUrl = URL.createObjectURL(await response.blob());
+                const oldPreviewUrl = previewUrls.get(documentId);
+                if (oldPreviewUrl) URL.revokeObjectURL(oldPreviewUrl);
+                previewUrls.set(documentId, previewUrl);
+                frame.src = `${previewUrl}#toolbar=0`;
+                panel.hidden = false;
+                if (feedback) feedback.textContent = '';
+                panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            } catch (error) {
+                console.error('Could not load the document preview:', error);
+                if (feedback) feedback.textContent = error.message || 'The document preview could not be loaded.';
+            }
+        };
+
+        window.requestDocumentDownload = (documentId) => {
+            lastFocusedElement = document.activeElement;
+            resetFormState();
             document.getElementById('requested-document-id').value = documentId;
-            document.getElementById('requested-document-action').value = action;
             status.textContent = '';
             status.classList.remove('success');
             modal.hidden = false;
@@ -176,86 +217,171 @@
         }
 
         modal.querySelectorAll('[data-close-download]').forEach((element) => element.addEventListener('click', closeModal));
+        email.addEventListener('input', updateCodeButtons);
+        phone.addEventListener('input', updateCodeButtons);
+        email.addEventListener('change', updateCodeButtons);
+        phone.addEventListener('change', updateCodeButtons);
+        changeContactButton.addEventListener('click', () => {
+            resetVerification();
+            status.textContent = 'Update your email or phone number, then request another code.';
+            status.classList.remove('success');
+            email.focus();
+        });
         document.addEventListener('keydown', (event) => {
             if (event.key === 'Escape' && !modal.hidden) closeModal();
         });
 
-        form.addEventListener('submit', async (event) => {
-            event.preventDefault();
+        async function sendVerificationCode(channel) {
             status.classList.remove('success');
-            if (!email.value.trim() && !phone.value.trim()) {
-                status.textContent = 'Enter an email address or a phone number to continue.';
+            const contact = channel === 'email' ? email : phone;
+            if (!document.getElementById('download-name').checkValidity()) {
+                document.getElementById('download-name').reportValidity();
                 return;
             }
-
-            const submitButton = form.querySelector('button[type="submit"]');
-            submitButton.disabled = true;
-            submitButton.textContent = 'Saving request…';
+            if (!document.getElementById('download-reason').checkValidity()) {
+                document.getElementById('download-reason').reportValidity();
+                return;
+            }
+            if (!document.getElementById('download-consent').checked) {
+                document.getElementById('download-consent').reportValidity();
+                return;
+            }
+            if (!contact.value.trim() || !contact.checkValidity()) {
+                contact.setCustomValidity(channel === 'sms' && !contact.value.trim()
+                    ? 'Enter your phone number, including its country code.'
+                    : '');
+                contact.reportValidity();
+                contact.setCustomValidity('');
+                return;
+            }
+            const codeButton = channel === 'email' ? emailCodeButton : smsCodeButton;
+            codeButton.disabled = true;
+            codeButton.textContent = channel === 'email' ? 'Sending email code…' : 'Sending SMS…';
+            let deliveryError;
             try {
                 const documentId = document.getElementById('requested-document-id').value;
+                const payload = {
+                    documentId,
+                    name: document.getElementById('download-name').value.trim(),
+                    email: email.value.trim(),
+                    phone: phone.value.trim(),
+                    reason: document.getElementById('download-reason').value.trim(),
+                    channel,
+                    consent: document.getElementById('download-consent').checked
+                };
                 const requestResponse = await fetch(`${window.PORTFOLIO_API_BASE_URL}/downloads/request`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({
-                        documentId,
-                        name: document.getElementById('download-name').value.trim(),
-                        email: email.value.trim(),
-                        phone: phone.value.trim(),
-                        consent: document.getElementById('download-consent').checked
-                    })
+                    body: JSON.stringify(payload)
                 });
                 const requestResult = await requestResponse.json();
                 if (!requestResponse.ok) {
-                    throw new Error(requestResult.error || 'Could not save your download request.');
+                    throw Object.assign(
+                        new Error(requestResult.error || 'No verification code was sent. Please check your contact details and try again.'),
+                        { status: requestResponse.status }
+                    );
                 }
 
-                authorizedDownloads.set(documentId, {
-                    token: requestResult.downloadToken,
-                    filename: requestResult.filename
+                challengeId = requestResult.challengeId;
+                verificationChannel = channel;
+                requestFields.hidden = true;
+                requestFields.querySelectorAll('input, textarea').forEach((input) => { input.disabled = true; });
+                codeActions.hidden = true;
+                emailCodeButton.disabled = true;
+                smsCodeButton.disabled = true;
+                channelHint.textContent = channel === 'email' ? 'sent to your email' : 'sent by SMS';
+                verificationCode.required = true;
+                verificationFields.hidden = false;
+                status.textContent = channel === 'email'
+                    ? `A code was sent to ${requestResult.recipientPreview}. Enter the real six-digit code from that email below.`
+                    : `A code was sent by SMS to ${requestResult.recipientPreview}. Enter the real six-digit code from that text message below.`;
+                verificationCode.focus();
+            } catch (error) {
+                deliveryError = error;
+                console.error(`Could not send the ${channel} verification code:`, error);
+                status.textContent = error.message || 'No verification code was sent. Please check your contact details and try again.';
+                status.classList.remove('success');
+            } finally {
+                codeButton.innerHTML = channel === 'email'
+                    ? '<i class="fas fa-envelope"></i> Send code by email'
+                    : '<i class="fas fa-comment-sms"></i> Send code by SMS';
+                updateCodeButtons();
+                if (deliveryError?.status === 503 && channel === 'sms') {
+                    contactHint.textContent = 'SMS is unavailable right now. No code was sent. To use email, clear the phone field and enter your email.';
+                    contactHint.classList.add('error');
+                } else if (deliveryError?.status === 503 && channel === 'email') {
+                    contactHint.textContent = 'Email delivery is unavailable right now. No code was sent. Try again later or use SMS if available.';
+                    contactHint.classList.add('error');
+                }
+            }
+        }
+
+        async function verifyCode() {
+            if (!challengeId) return;
+            if (!verificationCode.checkValidity()) {
+                verificationCode.reportValidity();
+                return;
+            }
+            verifyCodeButton.disabled = true;
+            verifyCodeButton.textContent = 'Verifying…';
+            status.classList.remove('success');
+            try {
+                const response = await fetch(`${window.PORTFOLIO_API_BASE_URL}/downloads/verify`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ challengeId, code: verificationCode.value.trim() })
                 });
-                const action = document.getElementById('requested-document-action').value;
-                if (action === 'preview') {
-                    submitButton.textContent = 'Loading document preview…';
-                    const previewResponse = await fetch(`${window.PORTFOLIO_API_BASE_URL}/downloads/preview`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ token: requestResult.downloadToken })
-                    });
-                    if (!previewResponse.ok) {
-                        const previewResult = await previewResponse.json();
-                        throw new Error(previewResult.error || 'Your details were saved, but the preview could not be loaded.');
-                    }
-                    const previewUrl = URL.createObjectURL(await previewResponse.blob());
-                    const oldPreviewUrl = previewUrls.get(documentId);
-                    if (oldPreviewUrl) URL.revokeObjectURL(oldPreviewUrl);
-                    previewUrls.set(documentId, previewUrl);
-                    document.getElementById(`${documentId}-preview-frame`).src = `${previewUrl}#toolbar=0`;
-                    document.getElementById(`${documentId}-preview-panel`).hidden = false;
-                    status.textContent = requestResult.notificationSent
-                        ? 'Your details were saved and the document preview is ready. Download is now enabled.'
-                        : 'Your details were saved. The document preview is ready; email notification is unavailable.';
-                    status.classList.add('success');
-                    closeModal();
-                    form.reset();
-                    return;
-                }
+                const result = await response.json();
+                if (!response.ok) throw new Error(result.error || 'Could not verify the code.');
+                verifiedAuthorization = { token: result.downloadToken, filename: result.filename };
+                verifyCodeButton.hidden = true;
+                changeContactButton.hidden = true;
+                verificationCode.disabled = true;
+                submitButton.hidden = false;
+                submitButton.focus();
+                status.textContent = `Your ${verificationChannel === 'email' ? 'email address' : 'phone number'} is verified. Continue when you’re ready.`;
+                status.classList.add('success');
+            } catch (error) {
+                console.error('Could not verify the download code:', error);
+                status.textContent = error.message || 'Could not verify the code. Please try again.';
+            } finally {
+                verifyCodeButton.disabled = false;
+                verifyCodeButton.textContent = 'Verify code';
+            }
+        }
 
+        async function continueToDocument() {
+            if (!verifiedAuthorization) return;
+            const documentId = document.getElementById('requested-document-id').value;
+            submitButton.disabled = true;
+            submitButton.textContent = 'Opening document…';
+            try {
+                authorizedDownloads.set(documentId, verifiedAuthorization);
                 await window.downloadAuthorizedDocument(documentId);
-                status.textContent = requestResult.notificationSent
-                    ? 'Your request was saved and the download is starting.'
-                    : 'Your request was saved to the admin dashboard and the download is starting. Email notification is unavailable.';
+                status.textContent = 'Your verified download is starting.';
                 status.classList.add('success');
                 window.setTimeout(() => {
                     closeModal();
-                    form.reset();
+                    resetFormState();
                 }, 1100);
             } catch (error) {
-                console.error('Could not prepare the document download:', error);
-                status.textContent = error.message || 'Could not prepare the download. Please try again.';
+                console.error('Could not continue to the document:', error);
+                status.textContent = error.message || 'Could not open the document. Please try again.';
             } finally {
                 submitButton.disabled = false;
                 submitButton.innerHTML = 'Continue to download <i class="fas fa-arrow-right"></i>';
             }
+        }
+
+        emailCodeButton.addEventListener('click', () => sendVerificationCode('email'));
+        smsCodeButton.addEventListener('click', () => sendVerificationCode('sms'));
+        verifyCodeButton.addEventListener('click', verifyCode);
+        submitButton.addEventListener('click', continueToDocument);
+        form.addEventListener('submit', (event) => {
+            event.preventDefault();
+            if (verifiedAuthorization) continueToDocument();
+            else if (challengeId) verifyCode();
+            else sendVerificationCode(phone.value.trim() && !email.value.trim() ? 'sms' : 'email');
         });
 
         window.downloadAuthorizedDocument = async (documentId) => {

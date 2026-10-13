@@ -18,10 +18,20 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     fetch(`${apiUrl}/me`, { credentials: 'include' })
-        .then((response) => {
-            if (response.ok) window.location.replace('admin.html');
+        .then(async (response) => {
+            if (response.ok) {
+                window.location.replace('admin.html');
+                return;
+            }
+            if (response.status !== 401) {
+                const result = await response.json();
+                throw new Error(result.error || 'Could not verify the admin session.');
+            }
         })
-        .catch((error) => console.error('Could not check the admin session:', error));
+        .catch((error) => {
+            console.error('Could not check the admin session:', error);
+            feedback.textContent = 'Could not verify the sign-in service. Check the connection and try again.';
+        });
 
     form.addEventListener('submit', async (event) => {
         event.preventDefault();

@@ -33,7 +33,7 @@
     </nav>
 
     <!-- HOME -->
-    <section id="home">
+    <section id="home" data-home-section="hero">
         <video class="home-video" autoplay muted loop playsinline>
             <source src="media/kiaglicity.mp4" type="video/mp4">
         </video>
@@ -56,7 +56,7 @@
     </section>
 
     <!-- QUICK INTRO -->
-    <section class="home-intro-section">
+    <section class="home-intro-section" data-home-section="introduction">
         <div class="home-intro-copy">
             <p class="home-section-kicker">A LITTLE ABOUT ME</p>
             <h2 class="section-title">Curious by nature.<br><span>Developer by choice.</span></h2>
@@ -68,7 +68,7 @@
     </section>
 
     <!-- FEATURED HIGHLIGHTS -->
-    <section>
+    <section id="home-highlights" data-home-section="highlights">
         <div class="home-highlights-heading">
             <div>
                 <p class="home-section-kicker">WHAT I BRING</p>
@@ -104,7 +104,7 @@
         </div>
     </section>
 
-    <section class="home-documents-cta">
+    <section class="home-documents-cta" data-home-section="documents">
         <div>
             <p class="home-section-kicker">DOCUMENTS & RESOURCES</p>
             <h2>Need my CV or certificates?</h2>
@@ -114,7 +114,7 @@
     </section>
 
     <!-- FOOTER -->
-    <footer>
+    <footer data-home-section="footer">
         <div class="footer-container">
             <!-- Footer Logo & Description -->
             <div class="footer-section footer-brand">
@@ -169,7 +169,8 @@
     </footer>
 
     <script src="src/api-config.js"></script>
-    <script src="src/prototype-data.js"></script>
+    <script src="src/profile-image.js"></script>
+    <script src="src/homepage.js"></script>
     <script src="src/script.js"></script>
 </body>
 </html>

@@ -57,7 +57,6 @@
         <!-- INTRO SECTION -->
         <div class="doc-card-info">
             <div class="doc-info-header">
-                <img src="../media/bg-removed.png" alt="David KWIZERA" class="doc-avatar">
                 <div>
                     <h2 class="doc-title-main">About These Documents</h2>
                     <p class="doc-status-tag">Professional & Up-to-Date</p>
@@ -93,8 +92,8 @@
                         <i class="fas fa-file-pdf" style="color: white; font-size: 1.8rem;"></i>
                     </div>
                     <div>
-                        <h4 style="color: var(--white); margin: 0 0 5px 0; font-size: 1.3rem; font-weight: 700;">Curriculum Vitae</h4>
-                        <p style="color: var(--accent); font-size: 0.9rem; margin: 0; font-weight: 600;">Professional Resume • Updated Jan 2026</p>
+                        <h4 id="cv-public-title" style="color: var(--white); margin: 0 0 5px 0; font-size: 1.3rem; font-weight: 700;">Curriculum Vitae</h4>
+                        <p id="cv-public-meta" style="color: var(--accent); font-size: 0.9rem; margin: 0; font-weight: 600;">Professional Resume</p>
                     </div>
                 </div>
 
@@ -116,7 +115,7 @@
                     </div>
                 </div>
                 <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-start; margin-bottom: 20px;">
-                        <button class="doc-card-button doc-btn-primary" onclick="requestDocumentDownload('cv', 'preview')">
+                        <button class="doc-card-button doc-btn-primary" onclick="previewDocument('cv')">
                             <i class="fas fa-eye"></i>View document
                         </button>
                         <button class="doc-card-button doc-btn-outline" onclick="requestDocumentDownload('cv')">
@@ -126,7 +125,7 @@
                 </div>
 
                 <div id="cv-preview-panel" class="document-preview-panel" hidden>
-                    <div class="document-preview-heading"><h3>Curriculum Vitae preview</h3><button type="button" class="doc-card-button doc-btn-outline" onclick="downloadAuthorizedDocument('cv')"><i class="fas fa-download"></i>Download CV</button></div>
+                    <div class="document-preview-heading"><h3>Curriculum Vitae preview</h3></div>
                     <iframe id="cv-preview-frame" class="document-preview-frame" title="Curriculum Vitae preview"></iframe>
                 </div>
 
@@ -185,7 +184,7 @@
                             </div>
                         </div>
                         <div style="display: flex; gap: 10px; flex-wrap: wrap; justify-content: flex-start; margin-bottom: 20px;">
-                            <button class="doc-card-button doc-btn-outline" onclick="requestDocumentDownload('ebc', 'preview')">
+                            <button class="doc-card-button doc-btn-outline" onclick="previewDocument('ebc')">
                                 <i class="fas fa-eye"></i>View document
                             </button>
                             <button class="doc-card-button doc-btn-outline" onclick="requestDocumentDownload('ebc')">
@@ -194,7 +193,7 @@
                         </div>
                         
                         <div id="ebc-preview-panel" class="document-preview-panel" hidden>
-                            <div class="document-preview-heading"><h3>EBC Document preview</h3><button type="button" class="doc-card-button doc-btn-outline" onclick="downloadAuthorizedDocument('ebc')"><i class="fas fa-download"></i>Download document</button></div>
+                            <div class="document-preview-heading"><h3>EBC Document preview</h3></div>
                             <iframe id="ebc-preview-frame" class="document-preview-frame" title="EBC Document preview"></iframe>
                         </div>
                         
@@ -281,28 +280,45 @@
             <div class="download-dialog-icon"><i class="fas fa-file-arrow-down"></i></div>
             <p class="download-dialog-kicker">DOCUMENT REQUEST</p>
             <h2 id="download-dialog-title">Get your document</h2>
-            <p class="download-dialog-copy">Share your name and an email address or phone number. Your details will be saved to the admin dashboard before the document is shown or downloaded.</p>
+            <p class="download-dialog-copy">Enter your own email address or phone number. We’ll send a code to the contact you choose and verify it before the download.</p>
             <form id="download-request-form" class="download-request-form">
                 <input type="hidden" id="requested-document-id">
-                <input type="hidden" id="requested-document-action">
-                <label for="download-name">Your name</label>
-                <input id="download-name" name="name" type="text" autocomplete="name" minlength="2" maxlength="100" required>
-                <label for="download-email">Email address <span>(optional if you provide a phone)</span></label>
-                <input id="download-email" name="email" type="email" autocomplete="email" maxlength="254">
-                <label for="download-phone">Phone number <span>(optional if you provide an email)</span></label>
-                <input id="download-phone" name="phone" type="tel" autocomplete="tel" maxlength="30">
-                <label class="download-consent">
-                    <input id="download-consent" type="checkbox" required>
-                    <span>I agree to have my contact details saved and shared with David for this document request.</span>
-                </label>
+                <div id="download-request-fields">
+                    <label for="download-name">Your name</label>
+                    <input id="download-name" name="name" type="text" autocomplete="name" minlength="2" maxlength="100" required>
+                    <label for="download-email">Email address <span>(for email verification)</span></label>
+                    <input id="download-email" name="email" type="email" autocomplete="email" maxlength="254">
+                    <label for="download-phone">Phone number <span>(for SMS, include country code)</span></label>
+                    <input id="download-phone" name="phone" type="tel" autocomplete="tel" maxlength="30" placeholder="+250788123456">
+                    <p id="download-contact-hint" class="download-contact-hint" aria-live="polite">Enter either an email address or a phone number—not both.</p>
+                    <label for="download-reason">Why do you need this document?</label>
+                    <textarea id="download-reason" name="reason" rows="2" minlength="10" maxlength="1000" required></textarea>
+                    <label class="download-consent">
+                        <input id="download-consent" type="checkbox" required>
+                        <span>I agree to have my contact details and reason saved for this request.</span>
+                    </label>
+                </div>
+                <div class="download-code-actions" id="download-code-actions">
+                    <button class="download-submit" id="send-email-code" type="button" hidden><i class="fas fa-envelope"></i> Send code to this email</button>
+                    <button class="download-submit secondary" id="send-sms-code" type="button" hidden><i class="fas fa-comment-sms"></i> Send code to this phone</button>
+                </div>
+                <div id="download-verification-fields" hidden>
+                    <label for="download-verification-code">Verification code <span id="verification-channel-hint"></span></label>
+                    <input id="download-verification-code" name="verificationCode" type="text" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" minlength="6" maxlength="6">
+                    <div class="download-code-actions">
+                        <button class="download-submit" id="verify-download-code" type="button">Verify code</button>
+                        <button class="download-change-email" id="download-change-email" type="button">Change contact or resend</button>
+                    </div>
+                </div>
                 <p id="download-form-status" class="download-form-status" aria-live="polite"></p>
-                <button class="download-submit" type="submit">Continue to download <i class="fas fa-arrow-right"></i></button>
+                <button class="download-submit download-continue" id="download-submit" type="button" hidden>Continue to download <i class="fas fa-arrow-right"></i></button>
             </form>
         </section>
     </div>
 
     <script src="prototype-data.js"></script>
     <script src="api-config.js"></script>
+    <script src="profile-image.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
