@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Homepage | Portfolio Admin</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="stylesheet" href="admin.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+</head>
+<body class="admin-page auth-pending">
+    <header class="admin-topbar">
+        <a class="admin-brand" href="../index.html"><img src="../media/bg-removed.png" alt="" class="nav-avatar"><span>Kade<span class="admin-brand-sub"> / <span id="admin-brand-name">Admin</span></span></span></a>
+        <div class="admin-topbar-actions"><span class="prototype-pill"><span></span> ADMIN</span><a class="admin-view-site" href="../index.html"><i class="fas fa-arrow-up-right-from-square"></i> View site</a></div>
+    </header>
+    <main class="admin-shell">
+        <aside class="admin-sidebar" aria-label="Admin sections">
+            <p class="admin-nav-label">WORKSPACE</p>
+            <a class="admin-nav-link" href="admin.html"><i class="fas fa-chart-pie"></i> Overview</a>
+            <a class="admin-nav-link" href="admin-downloads.html"><i class="fas fa-download"></i> Downloads <span id="nav-download-count" class="nav-count">0</span></a>
+            <a class="admin-nav-link active" href="admin-homepage.html"><i class="fas fa-pen-to-square"></i> Homepage</a>
+            <a class="admin-nav-link" href="admin-documents.html"><i class="fas fa-file-arrow-up"></i> Documents</a>
+            <div class="admin-sidebar-note"><i class="fas fa-circle-info"></i><p>Homepage introduction changes are saved in this browser.</p></div>
+            <div class="admin-account"><span class="admin-account-avatar"><i class="fas fa-user"></i></span><span class="admin-account-details"><strong id="admin-account-name">Administrator</strong><small id="admin-account-email"></small></span></div>
+            <button class="admin-logout" id="admin-logout" type="button"><i class="fas fa-right-from-bracket"></i> Log out</button>
+        </aside>
+        <div class="admin-content">
+            <section class="admin-heading">
+                <div><p class="admin-eyebrow">PUBLIC CONTENT</p><h1>Homepage introduction</h1><p class="admin-subheading">Update the introduction displayed on your portfolio homepage.</p></div>
+                <div class="admin-date"><i class="far fa-calendar"></i> <span id="today-date"></span></div>
+            </section>
+            <section id="homepage" class="admin-panel admin-page-panel">
+                <div class="panel-heading"><div><p class="admin-eyebrow">HOMEPAGE CONTENT</p><h2>Hero text</h2></div><span class="section-icon"><i class="fas fa-pen"></i></span></div>
+                <p class="panel-description">These edits are saved in this browser only.</p>
+                <form id="homepage-form" class="admin-form">
+                    <label for="hero-title">Main headline</label><input id="hero-title" name="title" maxlength="90" required>
+                    <label for="hero-subtitle">Short description</label><input id="hero-subtitle" name="subtitle" maxlength="140" required>
+                    <label for="hero-intro">Introduction</label><textarea id="hero-intro" name="intro" rows="5" maxlength="320" required></textarea>
+                    <div class="form-actions"><button class="admin-button primary" type="submit"><i class="fas fa-check"></i> Save homepage</button><button class="admin-button quiet" id="reset-homepage" type="button">Reset</button></div>
+                    <p class="form-feedback" id="homepage-feedback" aria-live="polite"></p>
+                </form>
+            </section>
+            <footer class="admin-footer"><span>KADE PORTFOLIO</span><span>Protected portfolio administration</span></footer>
+        </div>
+    </main>
+    <script src="api-config.js"></script><script src="prototype-data.js"></script><script src="admin.js"></script>
+</body>
+</html>
