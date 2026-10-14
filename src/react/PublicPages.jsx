@@ -1,0 +1,1026 @@
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { API_BASE_URL } from './api.js';
+import backgroundImageUrl from '../media/background image.jpeg';
+
+const API_BASE = API_BASE_URL;
+
+const NAV_ITEMS = [
+  ['Home', 'index.html', '../index.html'],
+  ['About', 'src/about.html', 'about.html'],
+  ['Background', 'src/background.html', 'background.html'],
+  ['Skills', 'src/skills.html', 'skills.html'],
+  ['Hobbies', 'src/hobbies.html', 'hobbies.html'],
+  ['Documents', 'src/document.html', 'document.html'],
+  ['Contact', 'src/contact.html', 'contact.html']
+];
+
+function safeUrl(value, allowContactSchemes = false) {
+  if (typeof value !== 'string' || !value.trim() || /[\u0000-\u0020\\]/.test(value)) return null;
+  try {
+    const url = new URL(value, window.location.href);
+    if (['http:', 'https:'].includes(url.protocol)) return url.href;
+    if (allowContactSchemes && ['mailto:', 'tel:'].includes(url.protocol)) return url.href;
+  } catch (error) {
+    console.error('Invalid portfolio URL:', error);
+  }
+  return null;
+}
+
+function safeAssetUrl(value) {
+  const url = safeUrl(value);
+  return url && !new URL(url).pathname.includes('/media/') ? url : null;
+}
+
+function useProfileImage(homepage = false) {
+  const [profileImage, setProfileImage] = useState('');
+  useEffect(() => {
+    let active = true;
+    fetch(`${API_BASE}/homepage`)
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Could not load the published profile image.');
+        const imageUrl = result.content?.brand?.imageUrl;
+        const validImageUrl = safeAssetUrl(imageUrl);
+        if (active && validImageUrl) setProfileImage(validImageUrl);
+      })
+      .catch((error) => console.error('Could not load the published profile image:', error));
+    return () => { active = false; };
+  }, []);
+  return profileImage;
+}
+
+function ThemeToggle() {
+  const [light, setLight] = useState(() => {
+    try {
+      return window.localStorage.getItem('theme') !== 'dark';
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark-theme', !light);
+    document.documentElement.classList.toggle('light-theme', light);
+    try {
+      window.localStorage.setItem('theme', light ? 'light' : 'dark');
+    } catch {
+      // Theme still works for the current page when storage is unavailable.
+    }
+  }, [light]);
+  return (
+    <button className="theme-toggle" id="theme-toggle" aria-label="Toggle light/dark mode" type="button" onClick={() => setLight((value) => !value)}>
+      {light ? '🌙' : '☀️'}
+    </button>
+  );
+}
+
+function Navigation({ homepage = false, homepageContent }) {
+  const image = useProfileImage(homepage);
+  const [open, setOpen] = useState(false);
+  const navRef = useRef(null);
+  const currentFilename = typeof window === 'undefined' ? '' : window.location.pathname.split('/').pop();
+  const closeMenu = () => setOpen(false);
+
+  useEffect(() => {
+    const closeWhenOutside = (event) => {
+      if (navRef.current && !navRef.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('click', closeWhenOutside);
+    return () => document.removeEventListener('click', closeWhenOutside);
+  }, []);
+
+  const isInSrc = typeof window !== 'undefined' && window.location.pathname.includes('/src/');
+  const homeHref = isInSrc ? '../index.html' : 'index.html';
+  const loginHref = isInSrc ? 'admin-login.html' : 'src/admin-login.html';
+
+  const items = homepage && Array.isArray(homepageContent?.navigation)
+    ? homepageContent.navigation
+    : NAV_ITEMS.map(([label, rootHref, srcHref]) => ({
+        label,
+        href: isInSrc ? srcHref : rootHref
+      }));
+
+  const navLinks = items.map(({ label, href }) => {
+    let active = false;
+    try {
+      active = new URL(href, window.location.href).pathname.split('/').pop() === currentFilename;
+    } catch {
+      active = false;
+    }
+    const link = safeUrl(href, true) || '#';
+    const isOffSite = /^https?:\/\//i.test(link) && !link.includes(window.location.host);
+    return (
+      <li key={`${label}:${href}`}>
+        <a className={active ? 'active' : undefined} href={link} target={isOffSite ? '_blank' : undefined} rel={isOffSite ? 'noopener noreferrer' : undefined} onClick={closeMenu}>
+          {label}
+        </a>
+      </li>
+    );
+  });
+
+  return (
+    <nav ref={navRef}>
+      <a className="nav-logo" href={homeHref} aria-label="David KWIZERA home">
+        {image ? (
+          <img src={image} alt="Kade" className="nav-avatar" />
+        ) : (
+          <span className="nav-avatar-fallback">K</span>
+        )}
+      </a>
+      <ul className={`nav-links${open ? ' open' : ''}`} onClick={(event) => {
+        if (event.target.closest('a')) closeMenu();
+      }}>
+        {navLinks}
+      </ul>
+      <div className="nav-actions">
+        <a className="nav-login" href={loginHref}>
+          <i className="fas fa-lock" aria-hidden="true"></i> {homepageContent?.loginLabel || 'Login'}
+        </a>
+        <ThemeToggle />
+        <button
+          className={`hamburger${open ? ' open' : ''}`}
+          id="hamburger"
+          aria-label={open ? 'Close navigation menu' : 'Open navigation menu'}
+          aria-expanded={open}
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+        >
+          {open ? '✕' : '☰'}
+        </button>
+      </div>
+    </nav>
+  );
+}
+
+function Footer({ homepage = false, content }) {
+  const defaults = {
+    brandName: 'David',
+    tagline: 'Building elegant solutions through code',
+    description: 'Computer Science student | Frontend Developer | Problem Solver',
+    quickLinksTitle: 'Quick Links',
+    servicesTitle: 'Services',
+    socialTitle: 'Connect With Me',
+    quickLinks: [
+      ['Home', homepage ? 'index.html' : '../index.html'],
+      ['About Me', homepage ? 'src/about.html' : 'about.html'],
+      ['Background', homepage ? 'src/background.html' : 'background.html'],
+      ['Skills', homepage ? 'src/skills.html' : 'skills.html']
+    ],
+    services: [
+      ['Web Development', homepage ? '/src/skills.html' : 'skills.html'],
+      ['UI/UX Design', homepage ? '/src/skills.html' : 'skills.html'],
+      ['Consulting', homepage ? '/src/background.html' : 'background.html'],
+      ['Contact', homepage ? '/src/contact.html' : 'contact.html']
+    ],
+    socialLinks: homepage ? [
+      ['GitHub', 'https://github.com/KADE2003N01/kade-status', 'fab fa-github'],
+      ['LinkedIn', 'https://www.linkedin.com/feed/', 'fab fa-linkedin'],
+      ['WhatsApp', 'https://wa.me/+250788950833', 'fab fa-whatsapp'],
+      ['Facebook', 'https://facebook.com/', 'fab fa-facebook']
+    ] : [
+      ['GitHub', 'https://github.com/KADE2003N01/kade-status', 'fab fa-github'],
+      ['LinkedIn', 'https://linkedin.com/in/david-kwizera', 'fab fa-linkedin'],
+      ['WhatsApp', 'https://wa.me/+250788950833', 'fab fa-whatsapp'],
+      ['Twitter', 'https://twitter.com/kadekwizera', 'fab fa-twitter']
+    ],
+    email: 'kadecomputerscience@gmail.com',
+    phone: '+250 788 950 833',
+    copyright: '© 2026 David KWIZERA. All rights reserved.',
+    builtBy: 'Built by KadeTech',
+    contactLabel: 'Contact',
+    contactHref: 'tel:+250788950833',
+    sourceCodeLabel: 'Source Code',
+    sourceCodeHref: 'https://github.com/KADE2003N01/kade-status'
+  };
+  const value = content ? {
+    ...defaults,
+    ...content,
+    quickLinks: content.quickLinks.map((item) => [item.label, item.href]),
+    services: content.services.map((item) => [item.label, item.href]),
+    socialLinks: content.socialLinks.map((item) => [item.label, item.href, item.icon])
+  } : defaults;
+  const dynamicLink = (href) => safeUrl(href, true) || '#';
+  return (
+    <footer data-home-section={homepage ? 'footer' : undefined} hidden={homepage && content?.visible === false}>
+      <div className="footer-container">
+        <div className="footer-section footer-brand">
+          <div className="footer-logo">{value.brandName}</div>
+          <p className="footer-tagline">{value.tagline}</p>
+          <p className="footer-description">{value.description}</p>
+        </div>
+        <div className="footer-section">
+          <h4 className="footer-section-title">{value.quickLinksTitle}</h4>
+          <ul className="footer-links">{value.quickLinks.map(([label, href]) => <li key={label}><a href={dynamicLink(href)}>{label}</a></li>)}</ul>
+        </div>
+        <div className="footer-section">
+          <h4 className="footer-section-title">{value.servicesTitle}</h4>
+          <ul className="footer-links">{value.services.map(([label, href]) => <li key={label}><a href={dynamicLink(href)}>{label}</a></li>)}</ul>
+        </div>
+        <div className="footer-section">
+          <h4 className="footer-section-title">{value.socialTitle}</h4>
+          <div className="footer-social">{value.socialLinks.map(([label, href, icon]) => (
+            <a key={label} href={dynamicLink(href)} target="_blank" rel="noopener noreferrer" title={label} aria-label={homepage ? label : undefined}>
+              <i className={/^[a-z0-9-]+(?:\s+[a-z0-9-]+)*$/i.test(icon || '') ? icon : 'fas fa-circle'} aria-hidden="true"></i>
+            </a>
+          ))}</div>
+          <p className="footer-contact"><i className="fas fa-envelope"></i> {value.email}<br /><i className="fas fa-phone"></i> {value.phone}</p>
+        </div>
+      </div>
+      <div className="footer-bottom">
+        <p className="footer-copy">{value.copyright}</p>
+        <p className="footer-built">{value.builtBy} | <a href={dynamicLink(value.contactHref)}>{value.contactLabel}</a> | <a href={dynamicLink(value.sourceCodeHref)} target="_blank" rel="noopener noreferrer">{value.sourceCodeLabel}</a></p>
+      </div>
+    </footer>
+  );
+}
+
+function Hero({ id, title, subtitle, intro, homepage = false, videoUrl }) {
+  return (
+    <section id={id}>
+      {videoUrl && <video className="home-video" autoPlay muted loop playsInline><source src={videoUrl} type="video/mp4" /></video>}
+      <div className="home-overlay"></div>
+      <div className="home-wrapper">
+        <div className={`home-content${homepage ? '' : ' section-content'}`}>
+          {homepage && <p className="home-kicker"><span></span> {title.kicker}</p>}
+          <h1 className="glitch" data-text={title.text} id={homepage ? 'dynamic-title' : undefined}>{title.text}</h1>
+          {homepage ? (
+            <>
+              <p className="subtitle" id="homepage-subtitle">{subtitle}</p>
+              <p className="intro" id="homepage-intro">{intro}</p>
+            </>
+          ) : (
+            <>
+              <p className="subtitle">{subtitle}</p>
+              <p className="intro">{intro}</p>
+            </>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function InnerPage({ title, subtitle, intro, id, children }) {
+  return (
+    <>
+      <Navigation />
+      <Hero id={id} title={{ text: title }} subtitle={subtitle} intro={intro} />
+      {children}
+      <Footer />
+    </>
+  );
+}
+
+function HomepageFooter({ content }) {
+  return <Footer homepage content={content} />;
+}
+
+const homepageFallback = {
+  site: { title: 'David KWIZERA | Portfolio', description: "Explore David KWIZERA's portfolio, background, skills, projects and professional documents." },
+  brand: {
+    name: 'KADE', imageUrl: '', loginLabel: 'Login',
+    navigation: NAV_ITEMS.map(([label, href]) => ({ label, href }))
+  },
+  hero: {
+    visible: true, kicker: 'DAVID KWIZERA · COMPUTER SCIENCE', title: "I'm a Developer",
+    subtitle: 'Computer Science Student | Frontend Developer',
+    intro: 'I build responsive, user-friendly web experiences and keep learning how thoughtful software can solve real problems.',
+    videoUrl: '', backgroundImageUrl: '',
+    buttons: [
+      { label: 'Explore my documents', href: 'src/document.html', style: 'primary' },
+      { label: 'My background', href: 'src/background.html', style: 'outline' }
+    ],
+    contactText: 'Have a project or opportunity?', contactHref: 'src/contact.html', contactLabel: "Let's connect"
+  },
+  introduction: {
+    visible: true, eyebrow: 'A LITTLE ABOUT ME', titleFirst: 'Curious by nature.', titleSecond: 'Developer by choice.',
+    body: "I'm David KWIZERA, a Computer Science student at the University of Rwanda. I enjoy turning ideas into clear, useful digital experiences and growing my skills through hands-on projects.",
+    linkLabel: 'Get to know me', linkHref: 'src/about.html'
+  },
+  highlights: {
+    visible: true, eyebrow: 'WELCOME', title: "Hey there — I'm glad you stopped by 👋",
+    message: "Pull up a chair and look around. This space holds my story, the things I'm learning, and the work I'm proud of. Take your time — there's plenty to explore.",
+    linkLabel: 'Get to know me', linkHref: 'src/skills.html'
+  },
+  documents: {
+    visible: true, eyebrow: 'DOCUMENTS & RESOURCES', title: 'Need my CV or certificates?',
+    description: 'Browse and download the latest documents from the portfolio document center.',
+    buttonLabel: 'Visit document center', buttonHref: 'src/document.html'
+  },
+  footer: {
+    visible: true, brandName: 'David', tagline: 'Building elegant solutions through code',
+    description: 'Computer Science student | Frontend Developer | Problem Solver',
+    quickLinksTitle: 'Quick Links', servicesTitle: 'Services', socialTitle: 'Connect With Me',
+    quickLinks: [
+      { label: 'Home', href: 'index.html' }, { label: 'About Me', href: 'src/about.html' },
+      { label: 'Background', href: 'src/background.html' }, { label: 'Skills', href: 'src/skills.html' }
+    ],
+    services: [
+      { label: 'Web Development', href: '/src/skills.html' }, { label: 'UI/UX Design', href: '/src/skills.html' },
+      { label: 'Consulting', href: '/src/background.html' }, { label: 'Contact', href: '/src/contact.html' }
+    ],
+    socialLinks: [
+      { label: 'GitHub', href: 'https://github.com/KADE2003N01/kade-status', icon: 'fab fa-github' },
+      { label: 'LinkedIn', href: 'https://www.linkedin.com/feed/', icon: 'fab fa-linkedin' },
+      { label: 'WhatsApp', href: 'https://wa.me/+250788950833', icon: 'fab fa-whatsapp' },
+      { label: 'Facebook', href: 'https://facebook.com/', icon: 'fab fa-facebook' }
+    ],
+    email: 'kadecomputerscience@gmail.com', phone: '+250 788 950 833',
+    copyright: '© 2026 David KWIZERA. All rights reserved.', builtBy: 'Built by KadeTech',
+    contactLabel: 'Contact', contactHref: 'tel:+250788950833',
+    sourceCodeLabel: 'Source Code', sourceCodeHref: 'https://github.com/KADE2003N01/kade-status'
+  }
+};
+
+function Homepage() {
+  const [content, setContent] = useState(homepageFallback);
+  useEffect(() => {
+    let active = true;
+    fetch(`${API_BASE}/homepage`)
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Could not load landing-page content.');
+        if (active && result.content) setContent(result.content);
+      })
+      .catch((error) => console.error('Could not load published landing-page content:', error));
+    return () => { active = false; };
+  }, []);
+  const c = { ...homepageFallback, ...content };
+  useEffect(() => {
+    if (c.site?.title) document.title = c.site.title;
+    const meta = document.querySelector('meta[name="description"]');
+    if (meta && c.site?.description) meta.content = c.site.description;
+  }, [c.site?.title, c.site?.description]);
+  const hero = c.hero || homepageFallback.hero;
+  const introduction = c.introduction || homepageFallback.introduction;
+  const highlights = c.highlights || homepageFallback.highlights;
+  const documents = c.documents || homepageFallback.documents;
+  const brand = c.brand || homepageFallback.brand;
+  const footer = { ...homepageFallback.footer, ...(c.footer || {}) };
+  const videoUrl = safeAssetUrl(hero.videoUrl);
+  const heroBackground = safeAssetUrl(hero.backgroundImageUrl) || backgroundImageUrl;
+  const validIcon = (icon) => typeof icon === 'string' && /^[a-z0-9-]+(?:\s+[a-z0-9-]+)*$/i.test(icon) ? icon : 'fas fa-circle';
+  const linkUrl = (href) => safeUrl(href, true) || '#';
+  return (
+    <>
+      <Navigation homepage homepageContent={brand} />
+      <section id="home" data-home-section="hero" hidden={!hero.visible} style={{ backgroundImage: `url("${heroBackground}")` }}>
+        {videoUrl && <video className="home-video" autoPlay muted loop playsInline><source src={videoUrl} type="video/mp4" /></video>}
+        <div className="home-overlay"></div>
+        <div className="home-wrapper">
+          <div className="home-content">
+            <p className="home-kicker"><span></span> {hero.kicker}</p>
+            <h1 className="glitch" data-text={hero.title} id="dynamic-title">{hero.title}</h1>
+            <p className="subtitle" id="homepage-subtitle">{hero.subtitle}</p>
+            <p className="intro" id="homepage-intro">{hero.intro}</p>
+            <div className="btn-group">{(hero.buttons || []).map((button) => (
+              <a key={`${button.label}:${button.href}`} href={linkUrl(button.href)} className={button.style === 'outline' ? 'btn btn-outline' : 'btn'}>
+                {button.label === 'Explore my documents' && <i className="fas fa-folder-open" aria-hidden="true"></i>} {button.label}
+              </a>
+            ))}</div>
+            <a className="home-contact-link" href={linkUrl(hero.contactHref)}>{hero.contactText} <span>{hero.contactLabel} <i className="fas fa-arrow-right" aria-hidden="true"></i></span></a>
+          </div>
+        </div>
+      </section>
+      <section className="home-intro-section" data-home-section="introduction" hidden={!introduction.visible}>
+        <div className="home-intro-copy">
+          <p className="home-section-kicker">{introduction.eyebrow}</p>
+          <h2 className="section-title">{introduction.titleFirst}<br /><span>{introduction.titleSecond}</span></h2>
+        </div>
+        <div className="card home-intro-card">
+          <p>{introduction.body}</p>
+          <a className="text-link" href={linkUrl(introduction.linkHref)}>{introduction.linkLabel} <i className="fas fa-arrow-right" aria-hidden="true"></i></a>
+        </div>
+      </section>
+      <section id="home-highlights" data-home-section="highlights" hidden={!highlights.visible}>
+        <div className="welcome-banner">
+          <div className="welcome-banner-glow" aria-hidden="true"></div>
+          <p className="home-section-kicker">{highlights.eyebrow}</p>
+          <h2 className="welcome-banner-title">{highlights.title}</h2>
+          <p className="welcome-banner-copy">{highlights.message}</p>
+          <div className="welcome-banner-actions">
+            <a className="btn" href={linkUrl(highlights.linkHref)}>{highlights.linkLabel} <i className="fas fa-arrow-right" aria-hidden="true"></i></a>
+            <a className="btn btn-outline" href={linkUrl(documents.buttonHref)}>{documents.buttonLabel} <i className="fas fa-folder-open" aria-hidden="true"></i></a>
+          </div>
+        </div>
+      </section>
+      <section className="home-documents-cta" data-home-section="documents" hidden={!documents.visible}>
+        <div><p className="home-section-kicker">{documents.eyebrow}</p><h2>{documents.title}</h2><p>{documents.description}</p></div>
+        <a className="btn" href={linkUrl(documents.buttonHref)}>{documents.buttonLabel} <i className="fas fa-arrow-right" aria-hidden="true"></i></a>
+      </section>
+      <HomepageFooter content={footer} />
+    </>
+  );
+}
+
+function AboutPage() {
+  return <InnerPage title="About Me" id="about" subtitle="Student • Developer • Problem Solver" intro="Discover my journey, passions, and what drives me as a computer science enthusiast.">
+    <section>
+      <div className="card">
+        <p>I am a Computer Science student at the <strong>University of Rwanda</strong> with a strong passion for backend development, artificial intelligence, and mobile applications.</p>
+        <p>I enjoy turning complex problems into clean, efficient solutions — whether that's building REST APIs, training ML models, or crafting mobile experiences with Flutter.</p>
+        <p>When I'm not coding, I'm exploring new technologies, contributing to open source, or sharpening my problem-solving skills on competitive platforms.</p>
+      </div>
+      <div className="card" style={{ marginTop: 20 }}>
+        <h3 style={{ color: 'var(--accent)', marginBottom: 16, fontSize: '1.3rem' }}>My Journey</h3>
+        <p>I started my programming journey in high school with Java and C++, quickly realizing my passion for solving real-world problems through code. Over the years, I've expanded my skill set to cover full-stack web development, data structures, algorithms, and emerging technologies like AI and machine learning.</p>
+        <p>My academic path at University of Rwanda has been instrumental in deepening my understanding of computer science principles. I've worked on various projects ranging from desktop GUI applications using Java Swing to responsive web interfaces with modern frontend frameworks.</p>
+      </div>
+      <div className="card" style={{ marginTop: 20 }}>
+        <h3 style={{ color: 'var(--accent)', marginBottom: 16, fontSize: '1.3rem' }}>What Drives Me</h3>
+        <p><strong>Innovation:</strong> I'm fascinated by emerging technologies and how they can transform industries and improve lives.</p>
+        <p><strong>Problem-Solving:</strong> I love tackling challenging problems and finding elegant, efficient solutions.</p>
+        <p><strong>Continuous Learning:</strong> Technology is ever-evolving, and I'm committed to staying updated with the latest tools and best practices.</p>
+        <p><strong>Collaboration:</strong> I believe in the power of teamwork and contributing to communities that push technology forward.</p>
+      </div>
+      <div className="card" style={{ marginTop: 20 }}>
+        <h3 style={{ color: 'var(--accent)', marginBottom: 16, fontSize: '1.3rem' }}>Career Vision</h3>
+        <p>My goal is to become a full-stack developer capable of architecting scalable systems and mentoring junior developers. I aspire to work on impactful projects that leverage AI and modern web technologies to solve meaningful problems in education, healthcare, and social impact sectors.</p>
+      </div>
+    </section>
+  </InnerPage>;
+}
+
+function BackgroundPage() {
+  return <InnerPage title="My Background" id="background" subtitle="Education • Experience • Growth" intro="From foundational education to practical experience, here's the journey that shaped me as a developer and problem-solver.">
+    <section>
+      <div className="card" style={{ marginBottom: 20 }}>
+        <h3 style={{ marginTop: 0, color: 'var(--accent)' }}>Education &amp; Experience Journey</h3>
+        <p>My journey in technology began with curiosity about how things work. From my high school days exploring the fundamentals, to now pursuing a degree in Computer Science, I've constantly sought to deepen my understanding of software development, algorithms, and emerging technologies. Each experience has shaped my problem-solving approach and reinforced my passion for building meaningful applications.</p>
+        <p><strong>Below, you'll find my academic milestones and professional experiences that have defined my career path:</strong></p>
+      </div>
+      <div className="bg-group">
+        <h3 className="bg-group-title"><i className="fas fa-graduation-cap"></i> University</h3>
+        <div className="timeline"><div className="timeline-item"><div className="timeline-dot"></div><div className="timeline-content">
+          <span className="timeline-date">2022 – Present</span><h3>BSc Computer Science</h3><p><strong>University of Rwanda</strong></p>
+          <p>Pursuing a degree in Computer Science with a strong focus on:</p>
+          <ul style={{ margin: '10px 0', paddingLeft: 20 }}><li>Core algorithms and data structures</li><li>Database design and management systems</li><li>Software engineering principles and practices</li><li>Web and mobile application development</li><li>Computer networks and systems</li></ul>
+          <p style={{ fontSize: '0.95rem', color: 'var(--muted)' }}>This foundation is shaping my ability to write efficient, scalable, and maintainable code across various domains.</p>
+        </div></div></div>
+      </div>
+      <div className="bg-group">
+        <h3 className="bg-group-title"><i className="fas fa-school"></i> High School</h3>
+        <div className="timeline"><div className="timeline-item"><div className="timeline-dot"></div><div className="timeline-content">
+          <span className="timeline-date">2019 – 2021</span><h3>A-Level Certificate</h3><p><strong>Secondary Education Foundation</strong></p>
+          <p>During these formative years, I developed a strong interest in science and technology. This period was crucial in discovering my passion for problem-solving and logical thinking. I was exposed to mathematics, physics, and computer fundamentals that sparked my interest in pursuing Computer Science at the university level.</p>
+          <p style={{ fontSize: '0.95rem', color: 'var(--muted)' }}>This foundation laid the groundwork for my technical journey and helped me understand the importance of continuous learning.</p>
+        </div></div></div>
+      </div>
+      <div className="bg-group">
+        <h3 className="bg-group-title"><i className="fas fa-briefcase"></i> Experience</h3>
+        <div className="timeline">
+          <div className="timeline-item"><div className="timeline-dot"></div><div className="timeline-content"><span className="timeline-date">2026 March 29th</span><h3>GDG Hackathon <span style={{ fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 400 }}>(Ongoing)</span></h3><p>Currently participating in a Google Developer Group (GDG) hackathon — collaborating with a team to build a real-world solution under time pressure. Gaining hands-on experience with modern tools and technologies.</p></div></div>
+          <div className="timeline-item"><div className="timeline-dot"></div><div className="timeline-content"><span className="timeline-date">2026 January</span><h3>Frontend Development</h3><p>Currently building responsive web interfaces using HTML, CSS, and JavaScript. Worked on <a href="https://gs-kayumbutss2026.netlify.app/" className="timeline-link" target="blank">GS Kayumbu</a> — a real-world web project.</p></div></div>
+          <div className="timeline-item"><div className="timeline-dot"></div><div className="timeline-content"><span className="timeline-date">2026</span><h3>Java Swing Development</h3><p>Built desktop GUI applications using Java Swing, focusing on clean UI design and event-driven programming.</p></div></div>
+          <div className="timeline-item"><div className="timeline-dot"></div><div className="timeline-content"><span className="timeline-date">2026</span><h3>Linux Basics <span style={{ fontSize: '0.8rem', color: 'var(--muted)', fontWeight: 400 }}>(Familiar)</span></h3><p>Familiar with Linux fundamentals — navigating the terminal, managing files and directories, file permissions, process management, and installing packages via apt. Comfortable working in a Linux environment for development tasks.</p></div></div>
+        </div>
+      </div>
+      <div className="card" style={{ marginTop: 24 }}>
+        <h3 style={{ color: 'var(--accent)', marginTop: 0, fontSize: '1.25rem', fontWeight: 800 }}>✦ Key Learning &amp; Growth Points</h3>
+        <div className="grid-responsive" style={{ marginTop: 16 }}>
+          <div style={{ padding: '16px 18px', background: 'var(--bg-soft)', borderRadius: 12, border: '1px solid var(--border)', borderLeft: '4px solid var(--accent)' }}>
+            <h4 style={{ margin: '0 0 8px', color: 'var(--text)', fontSize: '0.98rem', fontWeight: 750 }}>Adaptability</h4>
+            <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--muted)', lineHeight: 1.6 }}>Learned to quickly adapt to new tools, frameworks, and technologies as the tech landscape evolves.</p>
+          </div>
+          <div style={{ padding: '16px 18px', background: 'var(--bg-soft)', borderRadius: 12, border: '1px solid var(--border)', borderLeft: '4px solid var(--accent)' }}>
+            <h4 style={{ margin: '0 0 8px', color: 'var(--text)', fontSize: '0.98rem', fontWeight: 750 }}>Problem-Solving</h4>
+            <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--muted)', lineHeight: 1.6 }}>Developed a systematic approach to breaking down complex problems into manageable solutions.</p>
+          </div>
+          <div style={{ padding: '16px 18px', background: 'var(--bg-soft)', borderRadius: 12, border: '1px solid var(--border)', borderLeft: '4px solid var(--accent)' }}>
+            <h4 style={{ margin: '0 0 8px', color: 'var(--text)', fontSize: '0.98rem', fontWeight: 750 }}>Collaboration</h4>
+            <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--muted)', lineHeight: 1.6 }}>Gained experience working with teams in hackathons and group projects, improving communication and teamwork.</p>
+          </div>
+          <div style={{ padding: '16px 18px', background: 'var(--bg-soft)', borderRadius: 12, border: '1px solid var(--border)', borderLeft: '4px solid var(--accent)' }}>
+            <h4 style={{ margin: '0 0 8px', color: 'var(--text)', fontSize: '0.98rem', fontWeight: 750 }}>Full-Stack Thinking</h4>
+            <p style={{ margin: 0, fontSize: '0.88rem', color: 'var(--muted)', lineHeight: 1.6 }}>Moved from single-technology focus to understanding how frontend, backend, and databases work together.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </InnerPage>;
+}
+
+const skillGroups = [
+  ['Languages', 'Core programming languages with proficiency levels', [['Python', 60], ['Java', 80], ['JavaScript', 86], ['C++', 70], ['C', 65]]],
+  ['Frontend', 'Web interface and user experience technologies', [['HTML', 85], ['CSS', 80], ['JavaScript', 75], ['React', 65]]],
+  ['Backend', 'Server-side and database technologies', [['Python', 60], ['Java', 80], ['PostgreSQL', 70], ['MySQL', 75]]],
+  ['Core Concepts', 'Fundamental computer science knowledge', [['Data Structures', 80], ['Algorithms', 75], ['Database Design', 70], ['OOP', 85]]],
+  ['AI & Productivity Tools', 'Tools that enhance productivity and innovation', [['ChatGPT', 90], ['Google GenAI', 80], ['Canva', 85], ['Amazon Q', 75]]]
+];
+
+function SkillsPage() {
+  return <InnerPage title="My Skills" id="skills" subtitle="Technical Expertise • Languages • Frameworks" intro="A comprehensive overview of my technical abilities and proficiency levels.">
+    <section className="container section-padding">
+      <div className="card mb-lg"><h3 className="card-title">Technical Expertise</h3><p>I've cultivated a diverse skill set across multiple domains of software development. My expertise spans programming languages, frameworks, and industry best practices that enable me to build robust, scalable applications from concept to deployment.</p></div>
+      <div className="skills-grid">{skillGroups.map(([title, subtitle, skills]) => (
+        <div className="skill-card" key={title}><h3>{title}</h3><p className="skill-subtitle">{subtitle}</p><ul className="skill-list">{skills.map(([name, percent]) => (
+          <li key={name}><span className="skill-name">{name}</span><div className="xp-bar"><div className="fill" style={{ width: `${percent}%` }}></div></div></li>
+        ))}</ul></div>
+      ))}</div>
+      <div className="card mt-lg"><h3 className="card-title">Proficiency Levels</h3>
+        <p><strong>Advanced (75-90%):</strong> Languages and technologies I use regularly in projects and feel confident solving complex problems.</p>
+        <p><strong>Intermediate (60-75%):</strong> Skills with solid practical experience that I continue to develop and apply in learning projects.</p>
+        <p><strong>Beginner-Intermediate (50-60%):</strong> Emerging skills I'm actively learning and exploring through side projects and coursework.</p>
+      </div>
+    </section>
+  </InnerPage>;
+}
+
+const hobbies = [
+  ['fas fa-book', 'Reading', 'Exploring ideas through books on technology, philosophy, and personal development'],
+  ['fas fa-hands-praying', 'Praying', 'Finding peace and clarity through spiritual practice'],
+  ['fas fa-music', 'Singing', 'Expressing creativity and emotion through music'],
+  ['fas fa-person-walking', 'Meditation', 'Building mental clarity and emotional resilience'],
+  ['fas fa-gamepad', 'Gaming', 'Enjoying strategic thinking and interactive storytelling'],
+  ['fas fa-futbol', 'Playing Football', 'Staying active and enjoying team collaboration']
+];
+
+function HobbiesPage() {
+  return <InnerPage title="My Hobbies" id="hobbies" subtitle="Interests • Passions • Activities" intro="Beyond coding, here's what makes me tick and fuels my creativity.">
+    <section className="container section-padding" style={{ maxWidth: 960, margin: '0 auto' }}>
+      <div className="card" style={{ marginBottom: 24 }}><h3 style={{ color: 'var(--accent)', marginBottom: 12, fontSize: '1.25rem', fontWeight: 800 }}>Beyond the Code</h3><p>While I'm passionate about technology and programming, I believe in maintaining a balanced lifestyle. My hobbies help me stay creative, sharp, and connected with the world around me. They've also taught me valuable lessons that I apply to my work as a developer.</p></div>
+      <div className="hobbies-grid">{hobbies.map(([icon, label, description]) => <div className="hobby-card" key={label}><i className={icon}></i><span>{label}</span><p style={{ fontSize: '0.88rem', color: 'var(--muted)', marginTop: 8 }}>{description}</p></div>)}</div>
+      <div className="card" style={{ marginTop: 24 }}><h3 style={{ color: 'var(--accent)', marginBottom: 12, fontSize: '1.25rem', fontWeight: 800 }}>Why These Matter</h3>
+        <p><strong>Reading:</strong> Keeps me updated and inspires new approaches to problem-solving.</p>
+        <p><strong>Spirituality &amp; Meditation:</strong> Helps maintain focus and emotional balance during challenging projects.</p>
+        <p><strong>Music &amp; Creativity:</strong> Enhances creative thinking which directly impacts my coding approach.</p>
+        <p><strong>Sports &amp; Physical Activity:</strong> Maintains health and teaches discipline and teamwork.</p>
+      </div>
+    </section>
+  </InnerPage>;
+}
+
+function ContactPage() {
+  const [form, setForm] = useState({ name: '', email: '', message: '' });
+  const [status, setStatus] = useState({ text: '', color: '' });
+  const [sending, setSending] = useState(false);
+  const submit = async (event) => {
+    event.preventDefault();
+    const payload = { name: form.name.trim(), email: form.email.trim(), message: form.message.trim() };
+    if (!payload.name || !payload.email || !payload.message) {
+      setStatus({ text: 'Please fill out all fields', color: 'var(--accent)' });
+      return;
+    }
+    setSending(true);
+    try {
+      const response = await fetch(`${API_BASE}/contact/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      const result = await response.json();
+      if (response.ok && result.success) {
+        setStatus({ text: 'Message sent! Check your inbox for confirmation.', color: 'var(--accent)' });
+        setForm({ name: '', email: '', message: '' });
+      } else {
+        setStatus({ text: `Notice: ${result.error || 'Failed to send'}`, color: 'var(--accent)' });
+      }
+    } catch (error) {
+      console.error('Form submission error:', error);
+      setStatus({ text: 'Connection issue. Is the server running?', color: 'var(--accent)' });
+    } finally {
+      setSending(false);
+    }
+  };
+  return <InnerPage title="Get In Touch" id="contact" subtitle="Contact • Connect • Collaborate" intro="Let's talk! I'm always open to new opportunities and collaborations.">
+    <section>
+      <div className="card" style={{ marginBottom: 24 }}><h3 style={{ color: 'var(--accent)', marginBottom: 12, fontSize: '1.25rem', fontWeight: 800 }}>Let's Connect</h3><p>I'm always open to interesting conversations, collaboration opportunities, and new projects. Whether you have a question, want to discuss technology, or have an exciting opportunity, feel free to reach out.</p><p>I typically respond within 24 hours and would love to hear from you!</p></div>
+      <div className="card contact-card">
+        <h3 style={{ color: 'var(--accent)', marginBottom: 16, fontSize: '1.25rem', fontWeight: 800 }}>Send Me a Message</h3>
+        <p>Have a project, opportunity, or just want to say hi? Feel free to reach out — I'm always open to connecting.</p>
+        <form className="contact-form" onSubmit={submit}>
+          <input type="text" placeholder="Your Name" aria-label="Your Name" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+          <input type="email" placeholder="Your Email" aria-label="Your Email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+          <textarea rows="5" placeholder="Your Message" aria-label="Your Message" required value={form.message} onChange={(event) => setForm({ ...form, message: event.target.value })}></textarea>
+          <button type="submit" className="btn" disabled={sending}>{sending ? 'Sending...' : 'Send Message'}</button>
+          <div id="form-status" role="status" aria-live="polite" style={{ marginTop: 15, fontWeight: 700, textAlign: 'center', color: status.color }}>{status.text}</div>
+        </form>
+      </div>
+      <div className="card" style={{ marginTop: 24 }}>
+        <h3 style={{ color: 'var(--accent)', marginBottom: 16, fontSize: '1.25rem', fontWeight: 800 }}>Connect on Social Media</h3><p style={{ marginBottom: 16 }}>Find me on these platforms for more regular updates:</p>
+        <div className="grid-responsive" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
+          <a href="https://github.com/KADE2003N01/kade-status" target="_blank" rel="noopener noreferrer" style={socialStyle}><i className="fab fa-github"></i> GitHub</a>
+          <a href="https://linkedin.com/in/david-kwizera" target="_blank" rel="noopener noreferrer" style={socialStyle}><i className="fab fa-linkedin"></i> LinkedIn</a>
+          <a href="https://wa.me/+250788950833" target="_blank" rel="noopener noreferrer" style={socialStyle}><i className="fab fa-whatsapp"></i> WhatsApp</a>
+        </div>
+      </div>
+      <div className="card" style={{ marginTop: 24 }}><h3 style={{ color: 'var(--accent)', marginBottom: 12, fontSize: '1.25rem', fontWeight: 800 }}>Response Time</h3><p>📧 <strong>Email:</strong> I check messages regularly and try to respond within 24 hours.</p><p>💬 <strong>WhatsApp/Messages:</strong> For urgent matters, WhatsApp is often the quickest way to reach me.</p><p>🔗 <strong>LinkedIn:</strong> Connect with me for professional networking and opportunities.</p></div>
+    </section>
+  </InnerPage>;
+}
+
+const socialStyle = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--accent)', textDecoration: 'none', padding: '14px 18px', background: 'var(--bg-soft)', borderRadius: 12, border: '1.5px solid var(--border)', fontWeight: 700, fontSize: '0.92rem', transition: 'all 0.2s ease' };
+
+function DocumentActionButtons({ documentId, onPreview, onDownload, primary = false, previewOpen = false }) {
+  return <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-start', marginBottom: 20 }}>
+    <button className={`doc-card-button ${primary ? 'doc-btn-primary' : 'doc-btn-outline'}`} type="button" aria-expanded={previewOpen} onClick={() => onPreview(documentId)}>
+      {previewOpen ? <><i className="fas fa-eye-slash"></i>Hide document</> : <><i className="fas fa-eye"></i>View full document</>}
+    </button>
+    <button className="doc-card-button doc-btn-outline" type="button" onClick={() => onDownload(documentId)}><i className="fas fa-download"></i>Download</button>
+  </div>;
+}
+
+function DownloadModal({ requestedDocumentId, onClose }) {
+  const [name, setName] = useState('');
+  const [email, setEmail] = useState('');
+  const [phone, setPhone] = useState('');
+  const [reason, setReason] = useState('');
+  const [consent, setConsent] = useState(false);
+  const [code, setCode] = useState('');
+  const [challengeId, setChallengeId] = useState('');
+  const [channel, setChannel] = useState('');
+  const [authorization, setAuthorization] = useState(null);
+  const [status, setStatus] = useState('');
+  const [success, setSuccess] = useState(false);
+  const [busy, setBusy] = useState('');
+  const [smsUnavailable, setSmsUnavailable] = useState(false);
+  const nameRef = useRef(null);
+  const emailRef = useRef(null);
+  const codeRef = useRef(null);
+  const lastFocused = useRef(null);
+  const downloadLink = useRef(null);
+  const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
+  const phoneValid = /^\+[1-9]\d{7,14}$/.test(phone.trim());
+  const hasEmail = Boolean(email.trim());
+  const hasPhone = Boolean(phone.trim());
+  const bothContacts = hasEmail && hasPhone;
+
+  const reset = useCallback(() => {
+    setName('');
+    setEmail('');
+    setPhone('');
+    setReason('');
+    setConsent(false);
+    setCode('');
+    setChallengeId('');
+    setChannel('');
+    setAuthorization(null);
+    setStatus('');
+    setSuccess(false);
+    setSmsUnavailable(false);
+    setBusy('');
+  }, []);
+  const close = useCallback(() => {
+    onClose();
+    window.setTimeout(() => lastFocused.current?.focus?.(), 0);
+  }, [onClose]);
+  useEffect(() => {
+    if (!requestedDocumentId) return;
+    lastFocused.current = document.activeElement;
+    reset();
+    window.requestAnimationFrame(() => nameRef.current?.focus());
+  }, [requestedDocumentId, reset]);
+  useEffect(() => {
+    const handleKey = (event) => {
+      if (event.key === 'Escape' && requestedDocumentId) close();
+    };
+    window.addEventListener('keydown', handleKey);
+    return () => window.removeEventListener('keydown', handleKey);
+  }, [close, requestedDocumentId]);
+  const sendCode = async (selectedChannel) => {
+    if (name.trim().length < 2 || name.trim().length > 100 || reason.trim().length < 10 || reason.length > 1000 || !consent) {
+      setStatus('Please complete your name, reason, and consent before requesting a code.');
+      return;
+    }
+    if (selectedChannel === 'email' ? !emailValid : !phoneValid) {
+      setStatus(selectedChannel === 'email' ? 'Enter a valid email address.' : 'Enter a valid phone number, including its country code.');
+      return;
+    }
+    setBusy(selectedChannel);
+    setSuccess(false);
+    try {
+      const response = await fetch(`${API_BASE}/downloads/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ documentId: requestedDocumentId, name: name.trim(), email: email.trim(), phone: phone.trim(), reason: reason.trim(), channel: selectedChannel, consent })
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        const error = new Error(result.error || 'No verification code was sent. Please check your contact details and try again.');
+        error.status = response.status;
+        throw error;
+      }
+      setChallengeId(result.challengeId);
+      setChannel(selectedChannel);
+      setStatus(`A code was sent ${selectedChannel === 'email' ? 'to' : 'by SMS to'} ${result.recipientPreview}. Enter the real six-digit code from that ${selectedChannel === 'email' ? 'email' : 'text message'} below.`);
+      window.requestAnimationFrame(() => codeRef.current?.focus());
+    } catch (error) {
+      console.error(`Could not send the ${selectedChannel} verification code:`, error);
+      setStatus(error.message || 'No verification code was sent. Please check your contact details and try again.');
+      if (error.status === 503) setSmsUnavailable(true);
+    } finally {
+      setBusy('');
+    }
+  };
+  const verifyCode = async () => {
+    if (!challengeId || !/^\d{6}$/.test(code)) {
+      setStatus('Enter the six-digit verification code.');
+      return;
+    }
+    setBusy('verify');
+    setSuccess(false);
+    try {
+      const response = await fetch(`${API_BASE}/downloads/verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ challengeId, code: code.trim() })
+      });
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || 'Could not verify the code.');
+      setAuthorization({ token: result.downloadToken, filename: result.filename });
+      setSuccess(true);
+      setStatus(`Your ${channel === 'email' ? 'email address' : 'phone number'} is verified. Continue when you’re ready.`);
+    } catch (error) {
+      console.error('Could not verify the download code:', error);
+      setStatus(error.message || 'Could not verify the code. Please try again.');
+    } finally {
+      setBusy('');
+    }
+  };
+  const continueDownload = async () => {
+    if (!authorization) return;
+    setBusy('download');
+    try {
+      const response = await fetch(`${API_BASE}/downloads/file`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: authorization.token })
+      });
+      if (!response.ok) {
+        const result = await response.json();
+        throw new Error(result.error || 'Your download authorization has expired.');
+      }
+      const blobUrl = URL.createObjectURL(await response.blob());
+      const link = downloadLink.current;
+      link.href = blobUrl;
+      link.download = authorization.filename;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(blobUrl), 60000);
+      setStatus('Your verified download is starting.');
+      setSuccess(true);
+      window.setTimeout(() => { onClose(); reset(); }, 1100);
+    } catch (error) {
+      console.error('Could not download the authorized document:', error);
+      setStatus(error.message || 'Could not open the document. Please try again.');
+    } finally {
+      setBusy('');
+    }
+  };
+  const codeActionsVisible = !challengeId && !bothContacts && (hasEmail || hasPhone);
+  return (
+    <div id="download-request-modal" className="download-modal" hidden={!requestedDocumentId}>
+      <a ref={downloadLink} hidden aria-hidden="true"></a>
+      <div className="download-modal-backdrop" data-close-download onClick={close}></div>
+      <section className="download-dialog" role="dialog" aria-modal="true" aria-labelledby="download-dialog-title">
+        <button className="download-modal-close" type="button" aria-label="Close form" data-close-download onClick={close}>&times;</button>
+        <div className="download-dialog-icon"><i className="fas fa-file-arrow-down"></i></div>
+        <p className="download-dialog-kicker">DOCUMENT REQUEST</p>
+        <h2 id="download-dialog-title">Get your document</h2>
+        <p className="download-dialog-copy">Enter your own email address or phone number. We’ll send a code to the contact you choose and verify it before the download.</p>
+        <form id="download-request-form" className="download-request-form" onSubmit={(event) => { event.preventDefault(); if (authorization) continueDownload(); else if (challengeId) verifyCode(); else sendCode(hasPhone && !hasEmail ? 'sms' : 'email'); }}>
+          <input type="hidden" id="requested-document-id" value={requestedDocumentId || ''} readOnly />
+          <div id="download-request-fields" hidden={Boolean(challengeId)}>
+            <label htmlFor="download-name">Your name</label>
+            <input id="download-name" name="name" type="text" autoComplete="name" minLength="2" maxLength="100" required disabled={Boolean(challengeId)} value={name} onChange={(event) => setName(event.target.value)} ref={nameRef} />
+            <label htmlFor="download-email">Email address <span>(for email verification)</span></label>
+            <input id="download-email" name="email" type="email" autoComplete="email" maxLength="254" disabled={Boolean(challengeId)} value={email} onChange={(event) => setEmail(event.target.value)} ref={emailRef} />
+            <label htmlFor="download-phone">Phone number <span>(for SMS, include country code)</span></label>
+            <input id="download-phone" name="phone" type="tel" autoComplete="tel" maxLength="30" placeholder="+250788123456" disabled={Boolean(challengeId)} value={phone} onChange={(event) => setPhone(event.target.value)} />
+            <p id="download-contact-hint" className={`download-contact-hint${bothContacts || (hasEmail && !emailValid) || (hasPhone && !phoneValid) || smsUnavailable ? ' error' : ''}`} aria-live="polite">
+              {smsUnavailable ? 'SMS or email delivery is unavailable right now. No code was sent. Check your contact details or try again later.' : bothContacts ? 'Enter either an email address or a phone number—not both.' : hasEmail && !emailValid ? 'Enter a valid email address.' : hasPhone && !phoneValid ? 'Use a valid phone number with country code, e.g. +250788123456.' : 'Enter either an email address or a phone number—not both.'}
+            </p>
+            <label htmlFor="download-reason">Why do you need this document?</label>
+            <textarea id="download-reason" name="reason" rows="2" minLength="10" maxLength="1000" required disabled={Boolean(challengeId)} value={reason} onChange={(event) => setReason(event.target.value)}></textarea>
+            <label className="download-consent">
+              <input id="download-consent" type="checkbox" required disabled={Boolean(challengeId)} checked={consent} onChange={(event) => setConsent(event.target.checked)} />
+              <span>I agree to have my contact details and reason saved for this request.</span>
+            </label>
+          </div>
+          <div className="download-code-actions" id="download-code-actions" hidden={!codeActionsVisible}>
+            <button className="download-submit" id="send-email-code" type="button" hidden={!hasEmail || bothContacts} disabled={!emailValid || Boolean(busy)} onClick={() => sendCode('email')}><i className="fas fa-envelope"></i> Send code to this email</button>
+            <button className="download-submit secondary" id="send-sms-code" type="button" hidden={!hasPhone || bothContacts} disabled={!phoneValid || Boolean(busy)} onClick={() => sendCode('sms')}><i className="fas fa-comment-sms"></i> Send code to this phone</button>
+          </div>
+          <div id="download-verification-fields" hidden={!challengeId}>
+            <label htmlFor="download-verification-code">Verification code <span id="verification-channel-hint">{channel ? `sent to your ${channel}` : ''}</span></label>
+            <input id="download-verification-code" name="verificationCode" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength="6" maxLength="6" required={Boolean(challengeId)} disabled={Boolean(authorization)} value={code} onChange={(event) => setCode(event.target.value)} ref={codeRef} />
+            <div className="download-code-actions">
+              {!authorization && <button className="download-submit" id="verify-download-code" type="button" disabled={Boolean(busy)} onClick={verifyCode}>{busy === 'verify' ? 'Verifying…' : 'Verify code'}</button>}
+              {!authorization && <button className="download-change-email" id="download-change-email" type="button" onClick={() => { setChallengeId(''); setCode(''); setAuthorization(null); setStatus('Update your email or phone number, then request another code.'); setSuccess(false); window.requestAnimationFrame(() => emailRef.current?.focus()); }}>Change contact or resend</button>}
+            </div>
+          </div>
+          <p id="download-form-status" className={`download-form-status${success ? ' success' : ''}`} aria-live="polite">{status}</p>
+          {authorization && <button className="download-submit download-continue" id="download-submit" type="button" disabled={Boolean(busy)} onClick={continueDownload}>{busy === 'download' ? 'Opening document…' : <>Continue to download <i className="fas fa-arrow-right"></i></>}</button>}
+        </form>
+      </section>
+    </div>
+  );
+}
+
+function DocumentsPage() {
+  const [documents, setDocuments] = useState([]);
+  const [feedback, setFeedback] = useState('');
+  const [previews, setPreviews] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [requestedDocumentId, setRequestedDocumentId] = useState('');
+  const previewUrls = useRef(new Map());
+  const previewPanels = useRef(new Map());
+  const openDownload = (documentId) => setRequestedDocumentId(documentId);
+  useEffect(() => {
+    let active = true;
+    fetch(`${API_BASE}/documents`)
+      .then(async (response) => {
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Could not load document details.');
+        if (active) setDocuments(Array.isArray(result.documents) ? result.documents : []);
+      })
+      .catch((error) => {
+        console.error('Could not load public documents:', error);
+        if (active) setFeedback('Could not load document details. Please refresh the page or try again later.');
+      })
+      .finally(() => { if (active) setLoading(false); });
+    return () => {
+      active = false;
+      previewUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, []);
+  const cvList = documents.filter((item) => item.type === 'cv');
+  const cv = cvList[0] || documents.find((item) => item.documentId === 'cv') || {
+    documentId: 'cv',
+    title: 'Curriculum Vitae', filename: 'KWIZERA David CV.pdf',
+    description: 'My curriculum vitae provides a comprehensive overview of my technical expertise, educational background at the University of Rwanda, and professional contributions to the field of software engineering.',
+    institution: '', issuedAt: '', updatedAt: ''
+  };
+  const ebc = documents.find((item) => item.documentId === 'ebc') || {
+    documentId: 'ebc', title: 'EBC Document 2026', description: 'Event Planning & Management',
+    longDescription: 'Comprehensive event planning documentation and strategic management guidelines for professional event coordination.',
+    institution: 'EBC Organization', issuedAt: '2026'
+  };
+  const certificates = documents.filter((item) => item.type === 'certificate');
+  const openFullscreen = (panel) => {
+    if (!panel || document.fullscreenElement) return;
+    const request = panel.requestFullscreen || panel.webkitRequestFullscreen || panel.msRequestFullscreen;
+    if (request) {
+      try {
+        request.call(panel)?.catch?.(() => {});
+      } catch {
+        /* Full screen is unavailable in this browser; the inline preview still works. */
+      }
+    }
+  };
+  const exitFullscreen = () => {
+    if (document.fullscreenElement) document.exitFullscreen?.();
+  };
+  const showPreview = (documentId) => {
+    if (previews[documentId]) {
+      exitFullscreen();
+      setPreviews((current) => {
+        const next = { ...current };
+        delete next[documentId];
+        return next;
+      });
+      return;
+    }
+    const openPanelFullscreen = () => window.requestAnimationFrame(() => {
+      const panel = previewPanels.current.get(documentId);
+      panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      openFullscreen(panel);
+    });
+    const cachedUrl = previewUrls.current.get(documentId);
+    if (cachedUrl) {
+      setPreviews((current) => ({ ...current, [documentId]: `${cachedUrl}#toolbar=0` }));
+      openPanelFullscreen();
+      return;
+    }
+    setFeedback('Loading document preview…');
+    fetch(`${API_BASE}/downloads/preview/${encodeURIComponent(documentId)}`)
+      .then(async (response) => {
+        if (!response.ok) {
+          const result = await response.json();
+          throw new Error(result.error || 'The document preview could not be loaded.');
+        }
+        const url = URL.createObjectURL(await response.blob());
+        previewUrls.current.set(documentId, url);
+        setPreviews((current) => ({ ...current, [documentId]: `${url}#toolbar=0` }));
+        setFeedback('');
+        openPanelFullscreen();
+      })
+      .catch((error) => {
+        console.error('Could not load the document preview:', error);
+        setFeedback(error.message || 'The document preview could not be loaded.');
+      });
+  };
+  useEffect(() => () => exitFullscreen(), []);
+  const dateFormat = (date, options) => {
+    if (!date) return '';
+    const parsed = new Date(date);
+    return Number.isNaN(parsed.getTime()) ? '' : new Intl.DateTimeFormat(undefined, options).format(parsed);
+  };
+  return <>
+    <InnerPage title="Documents" id="others" subtitle="CV • Files • Resources" intro="Access my CV, portfolio documents, and other important files.">
+      <section className="doc-welcome-section">
+        <div className="doc-hero-container"><h1 className="doc-hero-title">Welcome to My <span className="text-accent">Document Center</span></h1><p className="doc-hero-copy">Thank you for your interest in my professional profile. Submit your contact details before downloading my curriculum vitae and other documents.</p></div>
+        <div className="doc-card-info">
+          <div className="doc-info-header"><div><h2 className="doc-title-main">About These Documents</h2><p className="doc-status-tag">Professional &amp; Up-to-Date</p></div></div>
+          <p className="doc-description">My curriculum vitae contains comprehensive information about my educational background, professional experience, technical skills, and notable achievements. All documents are regularly updated and formatted for professional review.</p>
+          <div className="doc-feature-grid"><div className="doc-feature-item"><i className="fas fa-shield-alt text-accent"></i><span className="font-bold">Secure Download</span></div><div className="doc-feature-item"><i className="fas fa-clock text-accent"></i><span className="font-bold">Always Current</span></div><div className="doc-feature-item"><i className="fas fa-file-pdf text-accent"></i><span className="font-bold">PDF Format</span></div></div>
+        </div>
+        <div className="doc-card-cv-section">
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 20 }}>
+              <div style={{ width: 56, height: 56, background: 'var(--accent-soft)', border: '1.5px solid var(--border-strong)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                <i className="fas fa-file-pdf" style={{ color: 'var(--accent)', fontSize: '1.75rem' }}></i>
+              </div>
+              <div>
+                <h4 id="cv-public-title" style={{ color: 'var(--text)', margin: '0 0 4px', fontSize: '1.3rem', fontWeight: 800 }}>{cv?.title || 'Curriculum Vitae'}</h4>
+                <p id="cv-public-meta" style={{ color: 'var(--accent)', fontSize: '0.9rem', margin: 0, fontWeight: 700 }}>{cv ? [cv.institution, cv.issuedAt ? dateFormat(`${cv.issuedAt}T00:00:00`, { month: 'short', year: 'numeric' }) : ''].filter(Boolean).join(' · ') || 'Professional Resume' : 'Professional Resume'}</p>
+              </div>
+            </div>
+            <p style={{ color: 'var(--muted)', fontSize: '0.98rem', lineHeight: 1.75, marginBottom: 20 }}>
+              <span id="cv-public-description">{cv?.description || 'My curriculum vitae provides a comprehensive overview of my technical expertise, educational background at the University of Rwanda, and professional contributions to the field of software engineering.'}</span>
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <span className="doc-tag"><i className="fas fa-check-circle"></i>Virus Free</span>
+                <span className="doc-tag"><i className="fas fa-lock"></i>Secure</span>
+                <span className="doc-tag"><i className="fas fa-file-pdf"></i>500KB</span>
+              </div>
+            </div>
+            <DocumentActionButtons documentId="cv" onPreview={showPreview} onDownload={openDownload} primary previewOpen={Boolean(previews.cv)} />
+          </div>
+          <div id="cv-preview-panel" ref={(node) => { if (node) previewPanels.current.set('cv', node); }} className="document-preview-panel" hidden={!previews.cv}>
+            <div className="document-preview-heading"><h3>Curriculum Vitae preview</h3></div>
+            <iframe id="cv-preview-frame" className="document-preview-frame" title="Curriculum Vitae preview" src={previews.cv || undefined}></iframe>
+          </div>
+          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 16 }}>
+            <p style={{ color: 'var(--faint)', fontSize: '0.84rem', margin: 0, textAlign: 'center' }}>
+              <i className="fas fa-calendar-alt" style={{ color: 'var(--accent)', marginRight: 6 }}></i>Uploaded: <span id="cv-last-updated">{(cv.createdAt || cv.updatedAt) ? dateFormat(cv.createdAt || cv.updatedAt, { dateStyle: 'medium' }) : 'Not published yet'}</span> • <i className="fas fa-info-circle" style={{ color: 'var(--accent)', margin: '0 6px 0 10px' }}></i>File: <span id="cv-public-file-name">{cv?.filename || 'KWIZERA David CV.pdf'}</span>
+            </p>
+          </div>
+        </div>
+        {cvList.length > 1 && (
+          <div className="document-add-slot cv-add-slot" style={{ borderStyle: 'solid' }}>
+            <span className="document-add-icon"><i className="fas fa-file-lines" aria-hidden="true"></i></span>
+            <h3>More CVs ({cvList.length - 1})</h3>
+            <p>Older curriculum vitae versions also available in the document center.</p>
+            {cvList.slice(1).map((older) => (
+              <div key={older.documentId} style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
+                <span style={{ color: 'var(--text)', fontWeight: 700 }}>{older.title}</span>
+                <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Uploaded {(older.createdAt || older.updatedAt) ? dateFormat(older.createdAt || older.updatedAt, { dateStyle: 'medium' }) : ''}</span>
+                <button className="doc-card-button doc-btn-outline" type="button" aria-expanded={Boolean(previews[older.documentId])} onClick={() => showPreview(older.documentId)}>{previews[older.documentId] ? <><i className="fas fa-eye-slash" aria-hidden="true"></i>Hide document</> : <><i className="fas fa-eye" aria-hidden="true"></i>View full document</>}</button>
+                <button className="doc-card-button doc-btn-outline" type="button" onClick={() => openDownload(older.documentId)}><i className="fas fa-download" aria-hidden="true"></i>Download</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="document-add-slot cv-add-slot"><span className="document-add-icon"><i className="fas fa-file-circle-plus" aria-hidden="true"></i></span><h3>Add a CV</h3><p>Sign in as the administrator to publish or replace the latest CV.</p><a className="doc-card-button doc-btn-outline" href="admin-login.html">Add CV</a></div>
+        <p id="documents-feedback" className="documents-feedback" role="status" aria-live="polite">{loading ? '' : feedback}</p>
+        <div className="mt-lg text-left">
+          <div className="text-center mb-lg"><h2 className="doc-title-main" style={{ fontSize: 'clamp(1.5rem, 5vw, 2.2rem)' }}><i className="fas fa-certificate text-accent mr-sm"></i> Certificates &amp; Documents</h2></div>
+          <div className="grid-responsive">
+            <div className="document-file-card" data-document-id="ebc" style={{ padding: 26 }}>
+              <div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
+                  <div style={{ width: 54, height: 54, background: 'var(--accent-soft)', border: '1.5px solid var(--border-strong)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                    <i className="fas fa-file-alt" style={{ color: 'var(--accent)', fontSize: '1.6rem' }}></i>
+                  </div>
+                  <div>
+                    <h4 data-document-title style={{ color: 'var(--text)', margin: '0 0 4px', fontSize: '1.25rem', fontWeight: 800 }}>{ebc.title}</h4>
+                    <p data-document-description style={{ color: 'var(--accent)', fontSize: '0.88rem', margin: 0, fontWeight: 700 }}>{ebc.description}</p>
+                  </div>
+                </div>
+                <p data-document-long-description style={{ color: 'var(--muted)', fontSize: '0.94rem', lineHeight: 1.7, marginBottom: 18 }}>{ebc.longDescription || ebc.description}</p>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    <span className="doc-tag"><i className="fas fa-file-pdf"></i>PDF</span>
+                    <span className="doc-tag"><i className="fas fa-calendar"></i>{ebc.issuedAt?.slice(0, 4) || '2026'}</span>
+                  </div>
+                </div>
+                <DocumentActionButtons documentId="ebc" onPreview={showPreview} onDownload={openDownload} previewOpen={Boolean(previews.ebc)} />
+                <div id="ebc-preview-panel" ref={(node) => { if (node) previewPanels.current.set('ebc', node); }} className="document-preview-panel" hidden={!previews.ebc}>
+                  <div className="document-preview-heading"><h3>{ebc.title} preview</h3></div>
+                  <iframe id="ebc-preview-frame" className="document-preview-frame" title="EBC Document preview" src={previews.ebc || undefined}></iframe>
+                </div>
+                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 14 }}>
+                  <p style={{ color: 'var(--faint)', fontSize: '0.82rem', margin: 0, textAlign: 'center' }}>
+                    <i className="fas fa-calendar-alt" style={{ color: 'var(--accent)', marginRight: 6 }}></i>Issued: <span data-document-issued>{ebc.issuedAt?.slice(0, 4) || '2026'}</span> • <i className="fas fa-building" style={{ color: 'var(--accent)', margin: '0 6px 0 10px' }}></i><span data-document-institution>{ebc.institution || 'EBC Organization'}</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+            {certificates.map((certificate) => <article className="document-file-card" data-certificate-card key={certificate.documentId}>
+              <div className="public-certificate-heading"><span className="public-certificate-icon"><i className="fas fa-certificate" aria-hidden="true"></i></span><div><h3>{certificate.title}</h3><span className="public-certificate-type">Professional certificate</span></div></div>
+              <p className="public-certificate-description">{certificate.description}</p>
+              <div className="public-document-actions"><button className="doc-card-button doc-btn-outline" type="button" aria-expanded={Boolean(previews[certificate.documentId])} onClick={() => showPreview(certificate.documentId)}>{previews[certificate.documentId] ? <><i className="fas fa-eye-slash" aria-hidden="true"></i>Hide document</> : <><i className="fas fa-eye" aria-hidden="true"></i>View full document</>}</button><button className="doc-card-button doc-btn-outline" type="button" onClick={() => openDownload(certificate.documentId)}><i className="fas fa-download" aria-hidden="true"></i>Download</button></div>
+              <div id={`${certificate.documentId}-preview-panel`} ref={(node) => { if (node) previewPanels.current.set(certificate.documentId, node); }} className="document-preview-panel" hidden={!previews[certificate.documentId]}><div className="document-preview-heading"><h3>{certificate.title} preview</h3></div><iframe id={`${certificate.documentId}-preview-frame`} className="document-preview-frame" title={`${certificate.title} preview`} src={previews[certificate.documentId] || undefined}></iframe></div>
+              <div className="public-certificate-meta"><span>Issued {certificate.issuedAt}</span><span>{certificate.institution}</span></div>
+              {(certificate.createdAt || certificate.updatedAt) && <p style={{ color: 'var(--faint)', fontSize: '0.78rem', margin: '8px 0 0' }}><i className="fas fa-cloud-arrow-up" aria-hidden="true" style={{ color: 'var(--accent)', marginRight: 6 }}></i>Uploaded {dateFormat(certificate.createdAt || certificate.updatedAt, { dateStyle: 'medium' })}</p>}
+            </article>)}
+            <div className="document-add-slot certificate-add-slot"><span className="document-add-icon"><i className="fas fa-certificate" aria-hidden="true"></i></span><h3>Add a certificate</h3><p>Sign in as the administrator to add a certificate and its details.</p><a className="doc-card-button doc-btn-outline" href="admin-login.html">Add certificate</a></div>
+          </div>
+        </div>
+      </section>
+    </InnerPage>
+    <DownloadModal requestedDocumentId={requestedDocumentId} onClose={() => setRequestedDocumentId('')} />
+  </>;
+}
+
+export { Homepage, AboutPage, BackgroundPage, SkillsPage, HobbiesPage, DocumentsPage, ContactPage };

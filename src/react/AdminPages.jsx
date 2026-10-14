@@ -1,0 +1,1231 @@
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { API_BASE_URL } from './api.js';
+
+const ADMIN_LOGIN_URL = 'admin-login.html';
+const AdminSessionContext = createContext(null);
+
+async function apiRequest(path, options = {}) {
+    const response = await fetch(`${API_BASE_URL}${path}`, {
+        ...options,
+        credentials: 'include',
+        headers: options.body && typeof options.body === 'string'
+            ? { 'Content-Type': 'application/json', ...options.headers }
+            : options.headers
+    });
+
+    if (response.status === 401) {
+        window.location.replace(ADMIN_LOGIN_URL);
+        throw new Error('Your admin session has expired. Sign in again to continue.');
+    }
+    return response;
+}
+
+async function responseJson(response, fallbackMessage) {
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || fallbackMessage);
+    return result;
+}
+
+function displayError(error, fallback) {
+    return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function formatFieldLabel(key) {
+    return key
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
+        .replace(/^\w/, (letter) => letter.toUpperCase());
+}
+
+function formatDateTime(value, includeSeconds = false) {
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return 'Date unavailable';
+    return new Intl.DateTimeFormat(undefined, {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        ...(includeSeconds ? { second: '2-digit' } : {}),
+        timeZoneName: 'short'
+    }).format(date);
+}
+
+function useAdminSession() {
+    const [session, setSession] = useState(null);
+    const [ready, setReady] = useState(false);
+    const [logoutError, setLogoutError] = useState('');
+    const [loggingOut, setLoggingOut] = useState(false);
+
+    useEffect(() => {
+        let active = true;
+        (async () => {
+            try {
+                const response = await fetch(`${API_BASE_URL}/auth/me`, { credentials: 'include' });
+                if (response.status === 401) {
+                    window.location.replace(ADMIN_LOGIN_URL);
+                    return;
+                }
+                const result = await responseJson(response, 'The admin session could not be verified.');
+                const displayName = typeof result.user?.displayName === 'string' ? result.user.displayName.trim() : '';
+                const email = typeof result.user?.email === 'string' ? result.user.email.trim() : '';
+                if (!displayName || !email) throw new Error('The admin profile is missing a name or email address.');
+                if (active) {
+                    setSession({ displayName, email });
+                    document.body.classList.remove('auth-pending');
+                }
+            } catch (error) {
+                console.error('Could not verify the admin session:', error);
+                window.location.replace(`${ADMIN_LOGIN_URL}?session=unavailable`);
+            } finally {
+                if (active) setReady(true);
+            }
+        })();
+        return () => { active = false; };
+    }, []);
+
+    const logout = useCallback(async () => {
+        setLoggingOut(true);
+        setLogoutError('');
+        try {
+            const response = await apiRequest('/auth/logout', { method: 'POST' });
+            if (!response.ok) throw new Error('The server could not end this admin session.');
+            window.location.replace(ADMIN_LOGIN_URL);
+        } catch (error) {
+            console.error('Admin logout failed:', error);
+            setLogoutError('Could not log out. Check the connection and try again.');
+            setLoggingOut(false);
+        }
+    }, []);
+
+    return { session, ready, logout, logoutError, loggingOut };
+}
+
+function useAdminDownloads(enabled = true) {
+    const [downloads, setDownloads] = useState([]);
+    const [error, setError] = useState('');
+    const [lastUpdated, setLastUpdated] = useState('');
+    const [refreshing, setRefreshing] = useState(false);
+
+    const refresh = useCallback(async (quiet = false) => {
+        if (!enabled) return;
+        if (!quiet) setRefreshing(true);
+        setError('');
+        try {
+            const response = await apiRequest('/downloads');
+            const result = await responseJson(response, 'Could not load download requests.');
+            setDownloads(Array.isArray(result.downloads) ? result.downloads : []);
+            setLastUpdated(formatDateTime(new Date()));
+        } catch (requestError) {
+            console.error('Could not load download requests:', requestError);
+            setError(displayError(requestError, 'Could not load download requests. Check the server connection and retry.'));
+        } finally {
+            if (!quiet) setRefreshing(false);
+        }
+    }, [enabled]);
+
+    useEffect(() => {
+        if (!enabled) return undefined;
+        refresh(true);
+        const intervalId = window.setInterval(() => {
+            if (!document.hidden) refresh(true);
+        }, 30000);
+        const onVisibilityChange = () => {
+            if (!document.hidden) refresh(true);
+        };
+        document.addEventListener('visibilitychange', onVisibilityChange);
+        return () => {
+            window.clearInterval(intervalId);
+            document.removeEventListener('visibilitychange', onVisibilityChange);
+        };
+    }, [enabled, refresh]);
+
+    return { downloads, error, setError, lastUpdated, refreshing, refresh };
+}
+
+function useAdminClock() {
+    const [now, setNow] = useState(() => new Date());
+    useEffect(() => {
+        const intervalId = window.setInterval(() => setNow(new Date()), 1000);
+        return () => window.clearInterval(intervalId);
+    }, []);
+    return now;
+}
+
+function AdminThemeToggle() {
+    const [light, setLight] = useState(() => {
+        try {
+            return window.localStorage.getItem('theme') !== 'dark';
+        } catch {
+            return true;
+        }
+    });
+    useEffect(() => {
+        document.documentElement.classList.toggle('dark-theme', !light);
+        document.documentElement.classList.toggle('light-theme', light);
+        try {
+            window.localStorage.setItem('theme', light ? 'light' : 'dark');
+        } catch {
+            // Theme still works for the current page when storage is unavailable.
+        }
+    }, [light]);
+    return (
+        <button className="theme-toggle admin-theme-toggle" id="admin-theme-toggle" aria-label="Toggle light/dark mode" type="button" title={light ? 'Switch to dark mode' : 'Switch to light mode'} onClick={() => setLight((value) => !value)}>
+            {light ? '🌙' : '☀️'}
+        </button>
+    );
+}
+
+function useAdminProfileImage() {
+    const [profileImage, setProfileImage] = useState('');
+    useEffect(() => {
+        let active = true;
+        apiRequest('/homepage')
+            .then((response) => responseJson(response, 'Could not load the profile image.'))
+            .then((result) => {
+                const imageUrl = result.content?.brand?.imageUrl;
+                const validImageUrl = typeof imageUrl === 'string' && imageUrl && !imageUrl.includes('media/') ? imageUrl : '';
+                if (active && validImageUrl) setProfileImage(validImageUrl);
+            })
+            .catch((error) => console.error('Could not load the profile image:', error));
+        return () => { active = false; };
+    }, []);
+    return profileImage;
+}
+
+function AdminFrame({ session, logout, logoutError, loggingOut, active, downloadCount, children }) {
+    const initials = session.displayName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
+    const profileImage = useAdminProfileImage();
+    const links = [
+        { id: 'overview', href: 'admin.html', icon: 'fa-chart-pie', text: 'Overview' },
+        { id: 'downloads', href: 'admin-downloads.html', icon: 'fa-download', text: 'Downloads' },
+        { id: 'homepage', href: 'admin-homepage.html', icon: 'fa-pen-to-square', text: 'Landing page' },
+        { id: 'documents', href: 'admin-documents.html', icon: 'fa-file-arrow-up', text: 'Documents' },
+        { id: 'profile', href: 'admin-profile.html', icon: 'fa-id-badge', text: 'My profile' }
+    ];
+    const note = {
+        overview: 'Manage landing-page content, published documents, and visitor download requests from this dashboard.',
+        downloads: 'Review visitor details and document request status.',
+        homepage: 'Landing-page edits are saved on the server and visible to every visitor.',
+        documents: 'Published documents are stored privately and require visitor details before viewing or downloading.',
+        profile: 'Update your administrator details and profile image shown across the admin workspace.'
+    }[active];
+
+    return (
+        <div className="admin-page">
+            <header className="admin-topbar">
+                <div className="admin-brand-group">
+                    <a className="admin-avatar-link" href="admin-profile.html" title={`${session.displayName} · ${session.email}`} aria-label="Administrator profile">
+                        {profileImage
+                            ? <img className="admin-avatar-img" src={profileImage} alt="" />
+                            : <span className="admin-account-avatar admin-avatar-topbar" aria-hidden="true">{initials}</span>}
+                    </a>
+                    <a className="admin-brand" href="../index.html">
+                        <span>Kade<span className="admin-brand-sub"> / <span>{session.displayName}</span></span></span>
+                    </a>
+                </div>
+                <div className="admin-topbar-actions">
+                    <span className="prototype-pill"><span /> ADMIN</span>
+                    <AdminThemeToggle />
+                    <a className="admin-view-site" href="../index.html"><i className="fas fa-arrow-up-right-from-square" aria-hidden="true" /> View site</a>
+                </div>
+            </header>
+            <main className="admin-shell">
+                <aside className="admin-sidebar" aria-label="Admin sections">
+                    <p className="admin-nav-label">WORKSPACE</p>
+                    {links.map((link) => (
+                        <a key={link.id} className={`admin-nav-link${active === link.id ? ' active' : ''}`} href={link.href}>
+                            <i className={`fas ${link.icon}`} aria-hidden="true" /> {link.text}
+                            {link.id === 'downloads' && <span className="nav-count">{downloadCount}</span>}
+                        </a>
+                    ))}
+                    <div className="admin-sidebar-note">
+                        <i className="fas fa-circle-info" aria-hidden="true" />
+                        <p>{note}</p>
+                    </div>
+                    <div className="admin-account" title="Signed-in administrator profile">
+                        {profileImage
+                            ? <img className="admin-account-img" src={profileImage} alt="" />
+                            : <span className="admin-account-avatar" aria-hidden="true">{initials}</span>}
+                        <span className="admin-account-details"><strong>{session.displayName}</strong><small>{session.email}</small></span>
+                    </div>
+                    <div className="admin-sidebar-spacer" />
+                    <button className="admin-logout" type="button" onClick={logout} disabled={loggingOut}>
+                        <i className="fas fa-right-from-bracket" aria-hidden="true" /> {loggingOut ? 'Logging out…' : 'Log out'}
+                    </button>
+                    {logoutError && <p className="form-feedback error" role="status">{logoutError}</p>}
+                </aside>
+                <div className="admin-content">
+                    {children}
+                    <footer className="admin-footer"><span>KADE PORTFOLIO</span><span>Protected portfolio administration</span></footer>
+                </div>
+            </main>
+        </div>
+    );
+}
+
+function AdminPage({ active, children }) {
+    const auth = useAdminSession();
+    const downloadData = useAdminDownloads(auth.ready && Boolean(auth.session));
+    if (!auth.ready || !auth.session) return null;
+    return (
+        <AdminFrame
+            session={auth.session}
+            logout={auth.logout}
+            logoutError={auth.logoutError}
+            loggingOut={auth.loggingOut}
+            active={active}
+            downloadCount={downloadData.downloads.length}
+        >
+            <AdminSessionContext.Provider value={auth.session}>{children}</AdminSessionContext.Provider>
+        </AdminFrame>
+    );
+}
+
+export function AdminLoginPage() {
+    const [email, setEmail] = useState('');
+    const [password, setPassword] = useState('');
+    const [showPassword, setShowPassword] = useState(false);
+    const [feedback, setFeedback] = useState('');
+    const [submitting, setSubmitting] = useState(false);
+
+    useEffect(() => {
+        if (new URLSearchParams(window.location.search).get('session') === 'unavailable') {
+            setFeedback('Could not verify your previous session. Sign in again to continue.');
+        }
+        let active = true;
+        fetch(`${API_BASE_URL}/auth/me`, { credentials: 'include' })
+            .then(async (response) => {
+                if (response.ok) {
+                    window.location.replace('admin.html');
+                    return;
+                }
+                if (response.status !== 401) {
+                    const result = await response.json();
+                    throw new Error(result.error || 'Could not verify the admin session.');
+                }
+            })
+            .catch((error) => {
+                console.error('Could not check the admin session:', error);
+                if (active) setFeedback('Could not verify the sign-in service. Check the connection and try again.');
+            });
+        return () => { active = false; };
+    }, []);
+
+    async function submitLogin(event) {
+        event.preventDefault();
+        setFeedback('');
+        setSubmitting(true);
+        try {
+            const response = await fetch(`${API_BASE_URL}/auth/login`, {
+                method: 'POST',
+                credentials: 'include',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ email, password })
+            });
+            const result = await response.json();
+            if (!response.ok) {
+                setFeedback(result.error || 'Could not sign in. Please try again.');
+                return;
+            }
+            window.location.replace('admin.html');
+        } catch (error) {
+            console.error('Admin login request failed:', error);
+            setFeedback('Could not reach the sign-in service. Check the connection and try again.');
+        } finally {
+            setSubmitting(false);
+        }
+    }
+
+    return (
+        <main className="auth-page">
+            <div className="auth-layout">
+                <a className="auth-back-link" href="../index.html"><i className="fas fa-arrow-left" aria-hidden="true" /> Back to portfolio</a>
+                <section className="auth-card" aria-labelledby="login-title">
+                    <div className="auth-heading">
+                        <span className="auth-icon"><i className="fas fa-shield-halved" aria-hidden="true" /></span>
+                        <p className="auth-eyebrow">PRIVATE WORKSPACE</p>
+                        <h1 id="login-title">Welcome back</h1>
+                        <p>Sign in with your administrator credentials to continue.</p>
+                    </div>
+                    <form className="auth-form" onSubmit={submitLogin}>
+                        <label htmlFor="admin-email">Email address</label>
+                        <div className="auth-input-wrap">
+                            <i className="far fa-envelope" aria-hidden="true" />
+                            <input id="admin-email" name="email" type="email" autoComplete="username" maxLength={254} placeholder="you@example.com" required value={email} onChange={(event) => setEmail(event.target.value)} />
+                        </div>
+                        <label htmlFor="admin-password">Password</label>
+                        <div className="auth-input-wrap">
+                            <i className="fas fa-key" aria-hidden="true" />
+                            <input id="admin-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" maxLength={1024} placeholder="Enter your password" required value={password} onChange={(event) => setPassword(event.target.value)} />
+                            <button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((visible) => !visible)}>
+                                <i className={`far ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`} aria-hidden="true" />
+                            </button>
+                        </div>
+                        <p className="auth-feedback" aria-live="polite">{feedback}</p>
+                        <button className="auth-submit" type="submit" disabled={submitting}>
+                            <span>{submitting ? 'Signing in…' : 'Sign in to admin'}</span><i className="fas fa-arrow-right" aria-hidden="true" />
+                        </button>
+                    </form>
+                    <p className="auth-footnote"><i className="fas fa-lock" aria-hidden="true" /> Secure sign-in · Administrator access only</p>
+                </section>
+                <p className="auth-footer">© 2026 · KADE PORTFOLIO</p>
+            </div>
+        </main>
+    );
+}
+
+export function AdminOverviewPage() {
+    return <AdminPage active="overview"><OverviewContentPage /></AdminPage>;
+}
+
+function OverviewContentPage() {
+    const [documents, setDocuments] = useState([]);
+    const [documentsError, setDocumentsError] = useState('');
+    const [busyId, setBusyId] = useState('');
+    const [actionFeedback, setActionFeedback] = useState({ message: '', error: false });
+    const session = useContext(AdminSessionContext);
+    const now = useAdminClock();
+    const today = new Intl.DateTimeFormat(undefined, {
+        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+    }).format(now);
+
+    const loadDocuments = useCallback(async () => {
+        const response = await apiRequest('/documents');
+        const result = await responseJson(response, 'Could not load document details.');
+        setDocuments(Array.isArray(result.documents) ? result.documents : []);
+    }, []);
+
+    useEffect(() => {
+        let active = true;
+        loadDocuments().catch((error) => { if (active) setDocumentsError(displayError(error, 'Could not load document details.')); });
+        return () => { active = false; };
+    }, [loadDocuments]);
+
+    async function quickDelete(item) {
+        if (!window.confirm(`Delete "${item.title}" permanently? This cannot be undone.`)) return;
+        setBusyId(item.documentId);
+        try {
+            const response = await apiRequest(`/documents/${encodeURIComponent(item.documentId)}`, { method: 'DELETE' });
+            await responseJson(response, 'Could not delete the document.');
+            setDocuments((current) => current.filter((doc) => doc.documentId !== item.documentId));
+            setActionFeedback({ message: `"${item.title}" deleted.`, error: false });
+        } catch (error) {
+            console.error('Document delete failed:', error);
+            setActionFeedback({ message: displayError(error, 'Could not delete the document.'), error: true });
+        } finally {
+            setBusyId('');
+        }
+    }
+
+    const cv = documents.find((item) => item.type === 'cv');
+    const cvUpdated = cv?.createdAt || cv?.updatedAt
+        ? new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(cv.createdAt || cv.updatedAt))
+        : 'Portfolio document';
+
+    return <OverviewContent
+        today={today}
+        cv={cv}
+        cvUpdated={cvUpdated}
+        documentsError={documentsError}
+        documents={documents}
+        onQuickDelete={quickDelete}
+        busyId={busyId}
+        actionFeedback={actionFeedback}
+        sessionName={session?.displayName}
+    />;
+}
+
+function OverviewDocumentList({ documents, onQuickDelete, busyId, actionFeedback }) {
+    const items = documents.filter((item) => item.type !== 'document');
+    if (!items.length) {
+        return <div className="certificate-admin-list"><p className="certificate-admin-empty">No documents uploaded yet.</p></div>;
+    }
+    return (
+        <div className="overview-document-list">
+            {items.map((item) => (
+                <article className="overview-document-row" key={item.documentId}>
+                    <span className="file-icon"><i className={item.type === 'cv' ? 'fas fa-file-pdf' : 'fas fa-certificate'} aria-hidden="true" /></span>
+                    <div className="overview-document-info">
+                        <strong>{item.title}</strong>
+                        <span>{item.filename}{(item.createdAt || item.updatedAt) ? ` · Uploaded ${new Intl.DateTimeFormat(undefined, { dateStyle: 'medium' }).format(new Date(item.createdAt || item.updatedAt))}` : ''}</span>
+                    </div>
+                    <div className="certificate-admin-actions">
+                        <a className="admin-button quiet" href={`admin-documents.html#edit-${item.documentId}`}>Edit</a>
+                        <button className="admin-button danger" type="button" disabled={busyId === item.documentId} onClick={() => onQuickDelete(item)}>Delete</button>
+                    </div>
+                </article>
+            ))}
+            {actionFeedback.message && <p className={`form-feedback${actionFeedback.error ? ' error' : ''}`} role="status" aria-live="polite">{actionFeedback.message}</p>}
+        </div>
+    );
+}
+
+function OverviewContent({ today, cv, cvUpdated, documentsError, documents = [], onQuickDelete, busyId = '', actionFeedback = { message: '', error: false }, sessionName }) {
+    const { downloads } = useAdminDownloads(true);
+    const session = useContext(AdminSessionContext);
+    return (
+        <>
+            <section id="overview" className="admin-heading">
+                <div><p className="admin-eyebrow">PORTFOLIO CONTROL CENTER</p><h1>Good to see you, <span>{session?.displayName}</span> <span>✦</span></h1><p className="admin-subheading">Manage landing-page content, documents, and visitor download enquiries.</p></div>
+                <div className="admin-date"><i className="far fa-calendar" aria-hidden="true" /> <span>{today}</span></div>
+            </section>
+            <div className="prototype-alert" role="note"><i className="fas fa-triangle-exclamation" aria-hidden="true" /><p><strong>Everything in one place.</strong> Update the landing page, publish documents, and review visitor enquiries. Published changes are shared through the backend.</p></div>
+            <section className="stats-grid" aria-label="Portfolio statistics">
+                <article className="stat-card"><div className="stat-icon blue"><i className="fas fa-download" aria-hidden="true" /></div><div><p>Total downloads</p><strong>{downloads.filter((item) => item.downloadedAt).length}</strong></div><span className="stat-caption">database records</span></article>
+                <article className="stat-card"><div className="stat-icon violet"><i className="fas fa-user-plus" aria-hidden="true" /></div><div><p>New enquiries</p><strong>{downloads.filter((item) => !item.downloadedAt).length}</strong></div><span className="stat-caption">database requests</span></article>
+                <article className="stat-card"><div className="stat-icon green"><i className="fas fa-file-pdf" aria-hidden="true" /></div><div><p>Current CV</p><strong>{cv ? 'Published' : documentsError ? 'Unavailable' : 'Default'}</strong></div><span className="stat-caption">{cv ? cvUpdated : documentsError || 'Portfolio document'}</span></article>
+            </section>
+            <section className="admin-panel overview-links" aria-label="Dashboard sections">
+                <div className="panel-heading"><div><p className="admin-eyebrow">QUICK ACCESS</p><h2>Manage your portfolio</h2></div></div>
+                <div className="overview-link-grid">
+                    <a className="overview-link-card" href="admin-downloads.html"><span className="section-icon"><i className="fas fa-download" aria-hidden="true" /></span><span><strong>Downloads</strong><small>Review visitor requests and contacts</small></span><i className="fas fa-arrow-right" aria-hidden="true" /></a>
+                    <a className="overview-link-card" href="admin-homepage.html"><span className="section-icon"><i className="fas fa-pen-to-square" aria-hidden="true" /></span><span><strong>Landing page</strong><small>Manage all public landing-page content</small></span><i className="fas fa-arrow-right" aria-hidden="true" /></a>
+                    <a className="overview-link-card" href="admin-documents.html"><span className="section-icon"><i className="fas fa-file-arrow-up" aria-hidden="true" /></span><span><strong>Documents</strong><small>Publish CVs and certificates</small></span><i className="fas fa-arrow-right" aria-hidden="true" /></a>
+                    <a className="overview-link-card" href="admin-profile.html"><span className="section-icon"><i className="fas fa-id-badge" aria-hidden="true" /></span><span><strong>My profile</strong><small>Manage your admin details and image</small></span><i className="fas fa-arrow-right" aria-hidden="true" /></a>
+                </div>
+            </section>
+            <section className="admin-panel" aria-label="Uploaded documents">
+                <div className="panel-heading"><div><p className="admin-eyebrow">UPLOADED DOCUMENTS</p><h2>Quick manage</h2></div><a className="admin-button quiet" href="admin-documents.html"><i className="fas fa-plus" aria-hidden="true" /> Add document</a></div>
+                <p className="panel-description">Everything currently published to visitors. Delete here in one click, or open the Documents page to edit details and files.</p>
+                {documentsError && <p className="form-feedback error" role="status">{documentsError}</p>}
+                <OverviewDocumentList documents={documents} onQuickDelete={onQuickDelete} busyId={busyId} actionFeedback={actionFeedback} />
+            </section>
+        </>
+    );
+}
+
+export function AdminDownloadsPage() {
+    return <AdminPage active="downloads"><DownloadsContent /></AdminPage>;
+}
+
+function DownloadsContent() {
+    const [search, setSearch] = useState('');
+    const [actionError, setActionError] = useState('');
+    const [deletingId, setDeletingId] = useState('');
+    const { downloads, error, setError, lastUpdated, refreshing, refresh } = useAdminDownloads(true);
+    const filtered = useMemo(() => {
+        const query = search.trim().toLowerCase();
+        return downloads.filter((item) =>
+            `${item.name} ${item.email || ''} ${item.phone || ''} ${item.document} ${item.reason || ''}`.toLowerCase().includes(query)
+        );
+    }, [downloads, search]);
+    const now = useAdminClock();
+    const today = new Intl.DateTimeFormat(undefined, {
+        weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
+    }).format(now);
+
+    async function deleteDownload(item) {
+        if (!window.confirm('Delete this visitor download request? This cannot be undone.')) return;
+        setActionError('');
+        setDeletingId(item.id);
+        try {
+            const response = await apiRequest(`/downloads/${encodeURIComponent(item.id)}`, { method: 'DELETE' });
+            await responseJson(response, 'Could not delete this request.');
+            await refresh();
+        } catch (requestError) {
+            console.error('Download request deletion failed:', requestError);
+            setActionError(displayError(requestError, 'Could not delete this request.'));
+        } finally {
+            setDeletingId('');
+        }
+    }
+
+    return (
+            <>
+                    <section className="admin-heading">
+                        <div><p className="admin-eyebrow">VISITOR ACTIVITY</p><h1>Downloads &amp; enquiries</h1><p className="admin-subheading">Visitor contact information and document request history.</p></div>
+                        <div className="admin-date"><i className="far fa-calendar" aria-hidden="true" /> <span>{today}</span></div>
+                    </section>
+                    <section id="downloads" className="admin-panel">
+                        <div className="panel-heading">
+                            <div><p className="admin-eyebrow">REQUEST HISTORY</p><h2>Recent downloads</h2></div>
+                            <div className="download-tools">
+                                <label className="search-box"><i className="fas fa-search" aria-hidden="true" /><span className="sr-only">Search downloads</span><input type="search" placeholder="Search by name, contact or purpose" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
+                                <button className="admin-button quiet" type="button" disabled={refreshing} onClick={() => refresh()}><i className="fas fa-rotate" aria-hidden="true" /> Refresh</button>
+                            </div>
+                        </div>
+                        <p className="downloads-updated">Live clock <time dateTime={now.toISOString()}>{formatDateTime(now, true)}</time><span>Last refreshed <time>{lastUpdated || 'Not yet'}</time></span></p>
+                        {(error || actionError) && <p className="form-feedback error" role="status">{actionError || error}</p>}
+                        <div className="table-wrap">
+                            <table className="download-table">
+                                <thead><tr><th>VISITOR</th><th>CONTACT</th><th>DOCUMENT &amp; PURPOSE</th><th>DATE</th><th>STATUS</th><th>ACTION</th></tr></thead>
+                                <tbody>
+                                    {filtered.map((item) => (
+                                        <tr key={item.id}>
+                                            <td><div className="visitor-cell"><span className="visitor-avatar">{(item.name || '').trim().split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</span><span className="visitor-name">{item.name}</span></div></td>
+                                            <td><span className="contact-cell"><i className={`fas ${item.email ? 'fa-envelope' : 'fa-phone'}`} aria-hidden="true" /><span>{item.email || item.phone}</span></span></td>
+                                            <td><strong>{item.document}</strong><small className="download-reason">{item.reason || 'No purpose provided'}</small></td>
+                                            <td>{formatDateTime(item.downloadedAt || item.requestedAt)}</td>
+                                            <td><span className="status-badge">{item.downloadedAt ? 'Downloaded' : 'Requested'}</span></td>
+                                            <td><button className="download-delete-button" type="button" aria-label={`Delete request from ${item.name}`} disabled={deletingId === item.id} onClick={() => deleteDownload(item)}><i className="fas fa-trash-can" aria-hidden="true" /><span>Delete</span></button></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            {filtered.length === 0 && (
+                                <div className="empty-state">
+                                    <span className="empty-icon"><i className="fas fa-inbox" aria-hidden="true" /></span>
+                                    <h3>{downloads.length && search.trim() ? 'No matching enquiries' : 'No download enquiries yet'}</h3>
+                                    <p>{downloads.length && search.trim() ? 'Try another name, email address, phone number or document.' : 'Visitor details and document requests are saved here by the backend.'}</p>
+                                    <a href="document.html" className="small-action">Open the visitor documents page <i className="fas fa-arrow-right" aria-hidden="true" /></a>
+                                </div>
+                            )}
+                        </div>
+                    </section>
+            </>
+    );
+}
+
+function updateNestedValue(target, path, value) {
+    const copy = structuredClone(target);
+    let parent = copy;
+    for (const key of path.slice(0, -1)) parent = parent[key];
+    parent[path[path.length - 1]] = value;
+    return copy;
+}
+
+function HomepageFields({ content, schema, onChange }) {
+    if (!content) return null;
+    return Object.entries(content).map(([section, fields]) => (
+        <fieldset className="homepage-editor-section" key={section}>
+            <legend>{formatFieldLabel(section)}</legend>
+            {Object.entries(fields).map(([key, value]) => {
+                const id = `homepage-field-${section}-${key}`;
+                const path = [section, key];
+                const fieldType = schema?.[section]?.[key];
+                if (typeof fieldType === 'boolean') {
+                    return <div className="homepage-editor-field homepage-editor-toggle" key={key}><label htmlFor={id}><input id={id} type="checkbox" checked={value} onChange={(event) => onChange(path, event.target.checked)} /> {key === 'visible' ? 'Display this section on the landing page' : `Enable ${formatFieldLabel(key).toLowerCase()}`}</label></div>;
+                }
+                if (Array.isArray(fieldType)) {
+                    if (section === 'footer' && key === 'socialLinks' && Array.isArray(value)) {
+                        return (
+                            <div className="homepage-editor-field" key={key}>
+                                <label>{formatFieldLabel(key)}</label>
+                                <div className="social-links-editor">
+                                    {value.map((item, index) => (
+                                        <div className="social-link-row" key={index}>
+                                            <input type="text" maxLength={60} placeholder="Label (e.g. GitHub)" value={item.label ?? ''} onChange={(event) => onChange([...path, index, 'label'], event.target.value)} aria-label={`Social link ${index + 1} label`} />
+                                            <input type="url" maxLength={500} placeholder="https://…" value={item.href ?? ''} onChange={(event) => onChange([...path, index, 'href'], event.target.value)} aria-label={`Social link ${index + 1} URL`} />
+                                        </div>
+                                    ))}
+                                </div>
+                                <small>Enter each social media address as a full URL, such as https://github.com/your-name.</small>
+                            </div>
+                        );
+                    }
+                    const jsonValue = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
+                    return <div className="homepage-editor-field" key={key}><label htmlFor={id}>{formatFieldLabel(key)}</label><textarea id={id} rows={Math.min(Math.max(fieldType.length * 3, 5), 14)} value={jsonValue} spellCheck={false} onChange={(event) => onChange(path, event.target.value)} /><small>Edit this list as JSON. Keep each item’s fields, such as label and href.</small></div>;
+                }
+                return <div className="homepage-editor-field" key={key}><label htmlFor={id}>{formatFieldLabel(key)}</label><textarea id={id} rows={typeof value === 'string' && value.length > 120 ? 4 : 2} maxLength={2000} value={value ?? ''} onChange={(event) => onChange(path, event.target.value)} /></div>;
+            })}
+        </fieldset>
+    ));
+}
+
+function readFileAsDataUrl(file) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+        reader.onerror = () => reject(reader.error || new Error('Could not read the selected file.'));
+        reader.readAsDataURL(file);
+    });
+}
+
+async function readPdfAsBase64(file) {
+    const dataUrl = await readFileAsDataUrl(file);
+    return dataUrl.slice(dataUrl.indexOf(',') + 1);
+}
+
+export function AdminHomepagePage() {
+    return <AdminPage active="homepage"><HomepageContent /></AdminPage>;
+}
+
+function HomepageContent() {
+    const [content, setContent] = useState(null);
+    const [originalContent, setOriginalContent] = useState(null);
+    const [loadingError, setLoadingError] = useState('');
+    const [feedback, setFeedback] = useState({ message: '', error: false });
+    const [saving, setSaving] = useState(false);
+    const [resetting, setResetting] = useState(false);
+    const [profileFile, setProfileFile] = useState(null);
+    const [profileInputVersion, setProfileInputVersion] = useState(0);
+    const [profilePreview, setProfilePreview] = useState('');
+    const [profileFeedback, setProfileFeedback] = useState({ message: '', error: false });
+    const [uploadingProfile, setUploadingProfile] = useState(false);
+    const [profileUrl, setProfileUrl] = useState('');
+    const [savingProfileUrl, setSavingProfileUrl] = useState(false);
+
+    useEffect(() => {
+        let active = true;
+        apiRequest('/homepage')
+            .then((response) => responseJson(response, 'Could not load homepage content.'))
+            .then((result) => {
+                if (active) {
+                    setContent(result.content);
+                    setOriginalContent(result.content);
+                }
+            })
+            .catch((error) => { if (active) setLoadingError(displayError(error, 'Could not load homepage content.')); });
+        return () => { active = false; };
+    }, []);
+
+    useEffect(() => {
+        if (!profileFile) {
+            setProfilePreview('');
+            return undefined;
+        }
+        const url = URL.createObjectURL(profileFile);
+        setProfilePreview(url);
+        return () => URL.revokeObjectURL(url);
+    }, [profileFile]);
+
+    function handleFieldChange(path, value) {
+        setContent((current) => updateNestedValue(current, path, value));
+    }
+
+    async function saveHomepage(event) {
+        event.preventDefault();
+        setSaving(true);
+        setFeedback({ message: '', error: false });
+        try {
+            const contentToSave = structuredClone(originalContent);
+            for (const [section, fields] of Object.entries(contentToSave)) {
+                for (const [key, value] of Object.entries(fields)) {
+                    const draftValue = content[section][key];
+                    contentToSave[section][key] = Array.isArray(value) && typeof draftValue === 'string' ? JSON.parse(draftValue) : draftValue;
+                }
+            }
+            const response = await apiRequest('/homepage', { method: 'PUT', body: JSON.stringify({ content: contentToSave }) });
+            const result = await responseJson(response, 'Could not save homepage content.');
+            setContent(result.content);
+            setOriginalContent(result.content);
+            setFeedback({ message: 'Homepage changes are now live for all visitors.', error: false });
+        } catch (error) {
+            console.error('Homepage content update failed:', error);
+            setFeedback({
+                message: error instanceof SyntaxError ? 'A list contains invalid JSON. Correct it and try again.' : displayError(error, 'Could not save homepage content.'),
+                error: true
+            });
+        } finally {
+            setSaving(false);
+        }
+    }
+
+    async function resetHomepage() {
+        if (!window.confirm('Restore the default landing-page content for all visitors?')) return;
+        setResetting(true);
+        setFeedback({ message: '', error: false });
+        try {
+            const response = await apiRequest('/homepage/reset', { method: 'POST' });
+            const result = await responseJson(response, 'Could not restore default homepage content.');
+            setContent(result.content);
+            setOriginalContent(result.content);
+            setFeedback({ message: 'Default landing-page content restored for all visitors.', error: false });
+        } catch (error) {
+            console.error('Homepage content reset failed:', error);
+            setFeedback({ message: displayError(error, 'Could not restore homepage content.'), error: true });
+        } finally {
+            setResetting(false);
+        }
+    }
+
+    async function publishProfileImage(event) {
+        event.preventDefault();
+        if (!profileFile) {
+            setProfileFeedback({ message: 'Choose a profile image first.', error: true });
+            return;
+        }
+        setUploadingProfile(true);
+        try {
+            const response = await apiRequest('/homepage/profile-image', {
+                method: 'POST',
+                body: JSON.stringify({ image: await readFileAsDataUrl(profileFile) })
+            });
+            const result = await responseJson(response, 'Could not publish the profile image.');
+            setContent((current) => updateNestedValue(current, ['brand', 'imageUrl'], result.imageUrl));
+            setOriginalContent((current) => updateNestedValue(current, ['brand', 'imageUrl'], result.imageUrl));
+            setProfileFile(null);
+            setProfileInputVersion((version) => version + 1);
+            setProfileFeedback({ message: 'Profile image published for all visitors.', error: false });
+        } catch (error) {
+            console.error('Profile image upload failed:', error);
+            setProfileFeedback({ message: displayError(error, 'Could not publish the profile image.'), error: true });
+        } finally {
+            setUploadingProfile(false);
+        }
+    }
+
+    async function saveProfileUrl(event) {
+        event.preventDefault();
+        const url = profileUrl.trim();
+        if (!url) {
+            setProfileFeedback({ message: 'Paste an image URL first.', error: true });
+            return;
+        }
+        setSavingProfileUrl(true);
+        try {
+            const response = await apiRequest('/homepage', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    content: (() => {
+                        const updated = structuredClone(originalContent);
+                        updated.brand.imageUrl = url;
+                        return updated;
+                    })()
+                })
+            });
+            const result = await responseJson(response, 'Could not save the image URL.');
+            setContent(result.content);
+            setOriginalContent(result.content);
+            setProfileUrl('');
+            setProfileFeedback({ message: 'Profile image URL published for all visitors.', error: false });
+        } catch (error) {
+            console.error('Profile image URL save failed:', error);
+            setProfileFeedback({ message: displayError(error, 'Could not save the image URL. Use a full https:// address.'), error: true });
+        } finally {
+            setSavingProfileUrl(false);
+        }
+    }
+
+    const now = useAdminClock();
+    const today = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(now);
+    const publishedProfileImage = typeof content?.brand?.imageUrl === 'string'
+        && !content.brand.imageUrl.includes('media/')
+        ? content.brand.imageUrl
+        : '';
+    return (
+            <>
+                    <section className="admin-heading"><div><p className="admin-eyebrow">PUBLIC CONTENT</p><h1>Landing page</h1><p className="admin-subheading">Manage the text, links, images, cards, and visibility of every landing-page section.</p></div><div className="admin-date"><i className="far fa-calendar" aria-hidden="true" /> <span>{today}</span></div></section>
+                    <section id="homepage" className="admin-panel admin-page-panel">
+                        <div className="panel-heading"><div><p className="admin-eyebrow">LANDING PAGE CONTENT</p><h2>Edit published content</h2></div><span className="section-icon"><i className="fas fa-pen" aria-hidden="true" /></span></div>
+                        <p className="panel-description">Changes are shared with all visitors. Update each section below; lists such as navigation, cards, and footer links are edited as JSON. Use safe web addresses or relative page paths for links.</p>
+                        <div className="profile-image-upload">
+                            <div className="profile-image-preview">{(profilePreview || publishedProfileImage) && <img src={profilePreview || publishedProfileImage} alt="Current profile image" />}</div>
+                            <div><h3>Profile image</h3><p className="panel-description">Choose a JPG, PNG, or WebP image from your device. Maximum 5 MB.</p>
+                                <form className="profile-image-form" onSubmit={publishProfileImage}>
+                                    <label className="admin-button quiet" htmlFor="profile-image-input"><i className="fas fa-image" aria-hidden="true" /> Browse image</label>
+                                    <input key={profileInputVersion} id="profile-image-input" type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(event) => {
+                                        const file = event.target.files?.[0];
+                                        if (!file) return;
+                                        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+                                            setProfileFile(null);
+                                            setProfileInputVersion((version) => version + 1);
+                                            setProfileFeedback({ message: 'Choose a JPG, PNG, or WebP image no larger than 5 MB.', error: true });
+                                            return;
+                                        }
+                                        setProfileFile(file);
+                                        setProfileFeedback({ message: `${file.name} is ready to publish.`, error: false });
+                                    }} />
+                                    <button className="admin-button primary" type="submit" disabled={uploadingProfile}><i className="fas fa-upload" aria-hidden="true" /> Publish image</button>
+                                </form>
+                                <form className="profile-image-form profile-image-url-form" onSubmit={saveProfileUrl}>
+                                    <input type="url" maxLength={500} placeholder="Or paste an image URL (https://…)" aria-label="Profile image URL" value={profileUrl} onChange={(event) => setProfileUrl(event.target.value)} />
+                                    <button className="admin-button quiet" type="submit" disabled={savingProfileUrl}><i className="fas fa-link" aria-hidden="true" /> Use URL</button>
+                                </form>
+                                <p className={`form-feedback${profileFeedback.error ? ' error' : ''}`} aria-live="polite">{profileFeedback.message}</p>
+                            </div>
+                        </div>
+                        {loadingError && <p className="form-feedback error" role="status">{loadingError}</p>}
+                        <form className="admin-form" onSubmit={saveHomepage}>
+                            <div className="homepage-editor-fields"><HomepageFields content={content} schema={originalContent} onChange={handleFieldChange} /></div>
+                            <div className="form-actions"><button className="admin-button primary" type="submit" disabled={!content || saving}><i className="fas fa-check" aria-hidden="true" /> Publish changes</button><button className="admin-button quiet" id="reset-homepage" type="button" disabled={resetting} onClick={resetHomepage}>Restore defaults</button><a className="admin-button quiet" href="../index.html" target="_blank" rel="noopener">Preview landing page</a></div>
+                            <p className={`form-feedback${feedback.error ? ' error' : ''}`} aria-live="polite">{feedback.message}</p>
+                        </form>
+                    </section>
+            </>
+    );
+}
+
+export function AdminProfilePage() {
+    return <AdminPage active="profile"><ProfileContent /></AdminPage>;
+}
+
+function ProfileContent() {
+    const session = useContext(AdminSessionContext);
+    const [content, setContent] = useState(null);
+    const [originalContent, setOriginalContent] = useState(null);
+    const [profileFile, setProfileFile] = useState(null);
+    const [profileInputVersion, setProfileInputVersion] = useState(0);
+    const [profilePreview, setProfilePreview] = useState('');
+    const [profileFeedback, setProfileFeedback] = useState({ message: '', error: false });
+    const [uploadingProfile, setUploadingProfile] = useState(false);
+    const [profileUrl, setProfileUrl] = useState('');
+    const [savingProfileUrl, setSavingProfileUrl] = useState(false);
+    const now = useAdminClock();
+    const today = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(now);
+
+    useEffect(() => {
+        let active = true;
+        apiRequest('/homepage')
+            .then((response) => responseJson(response, 'Could not load profile details.'))
+            .then((result) => {
+                if (active) {
+                    setContent(result.content);
+                    setOriginalContent(result.content);
+                }
+            })
+            .catch((error) => console.error('Could not load profile details:', error));
+        return () => { active = false; };
+    }, []);
+
+    useEffect(() => {
+        if (!profileFile) {
+            setProfilePreview('');
+            return undefined;
+        }
+        const url = URL.createObjectURL(profileFile);
+        setProfilePreview(url);
+        return () => URL.revokeObjectURL(url);
+    }, [profileFile]);
+
+    const publishedProfileImage = typeof content?.brand?.imageUrl === 'string'
+        && !content.brand.imageUrl.includes('media/')
+        ? content.brand.imageUrl
+        : '';
+
+    async function publishProfileImage(event) {
+        event.preventDefault();
+        if (!profileFile) {
+            setProfileFeedback({ message: 'Choose a profile image first.', error: true });
+            return;
+        }
+        setUploadingProfile(true);
+        try {
+            const response = await apiRequest('/homepage/profile-image', {
+                method: 'POST',
+                body: JSON.stringify({ image: await readFileAsDataUrl(profileFile) })
+            });
+            const result = await responseJson(response, 'Could not publish the profile image.');
+            setContent((current) => updateNestedValue(current, ['brand', 'imageUrl'], result.imageUrl));
+            setOriginalContent((current) => updateNestedValue(current, ['brand', 'imageUrl'], result.imageUrl));
+            setProfileFile(null);
+            setProfileInputVersion((version) => version + 1);
+            setProfileFeedback({ message: 'Profile image published for all visitors.', error: false });
+        } catch (error) {
+            console.error('Profile image upload failed:', error);
+            setProfileFeedback({ message: displayError(error, 'Could not publish the profile image.'), error: true });
+        } finally {
+            setUploadingProfile(false);
+        }
+    }
+
+    async function saveProfileUrl(event) {
+        event.preventDefault();
+        const url = profileUrl.trim();
+        if (!url) {
+            setProfileFeedback({ message: 'Paste an image URL first.', error: true });
+            return;
+        }
+        setSavingProfileUrl(true);
+        try {
+            const response = await apiRequest('/homepage', {
+                method: 'PUT',
+                body: JSON.stringify({
+                    content: (() => {
+                        const updated = structuredClone(originalContent);
+                        updated.brand.imageUrl = url;
+                        return updated;
+                    })()
+                })
+            });
+            const result = await responseJson(response, 'Could not save the image URL.');
+            setContent(result.content);
+            setOriginalContent(result.content);
+            setProfileUrl('');
+            setProfileFeedback({ message: 'Profile image URL published for all visitors.', error: false });
+        } catch (error) {
+            console.error('Profile image URL save failed:', error);
+            setProfileFeedback({ message: displayError(error, 'Could not save the image URL. Use a full https:// address.'), error: true });
+        } finally {
+            setSavingProfileUrl(false);
+        }
+    }
+
+    return (
+        <>
+            <section className="admin-heading"><div><p className="admin-eyebrow">ADMINISTRATOR</p><h1>My profile</h1><p className="admin-subheading">Your signed-in admin details and the profile image shown across the portfolio.</p></div><div className="admin-date"><i className="far fa-calendar" aria-hidden="true" /> <span>{today}</span></div></section>
+            <section id="profile" className="admin-panel admin-page-panel">
+                <div className="panel-heading"><div><p className="admin-eyebrow">ACCOUNT DETAILS</p><h2>Signed-in administrator</h2></div><span className="section-icon"><i className="fas fa-id-badge" aria-hidden="true" /></span></div>
+                <p className="panel-description">These details come from your secure admin session. Sign-in credentials are managed on the server and are never displayed here.</p>
+                <dl className="admin-profile-list profile-page-list">
+                    <div><dt>Name</dt><dd>{session?.displayName}</dd></div>
+                    <div><dt>Email</dt><dd>{session?.email}</dd></div>
+                    <div><dt>Role</dt><dd>Administrator</dd></div>
+                    <div><dt>Session</dt><dd><span className="admin-profile-session-ok"><i className="fas fa-shield-halved" aria-hidden="true" /> Active · secure</span></dd></div>
+                </dl>
+            </section>
+            <section className="admin-panel admin-page-panel">
+                <div className="panel-heading"><div><p className="admin-eyebrow">PROFILE IMAGE</p><h2>Image used across the site</h2></div><span className="section-icon"><i className="fas fa-image" aria-hidden="true" /></span></div>
+                <p className="panel-description">This image appears in the admin topbar and on the public landing page. Choose a JPG, PNG, or WebP image from your device (maximum 5 MB) or paste a full image URL.</p>
+                <div className="profile-image-upload">
+                    <div className="profile-image-preview">{(profilePreview || publishedProfileImage) && <img src={profilePreview || publishedProfileImage} alt="Current profile image" />}</div>
+                    <div>
+                        <form className="profile-image-form" onSubmit={publishProfileImage}>
+                            <label className="admin-button quiet" htmlFor="profile-image-input"><i className="fas fa-image" aria-hidden="true" /> Browse image</label>
+                            <input key={profileInputVersion} id="profile-image-input" type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                if (!file) return;
+                                if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
+                                    setProfileFile(null);
+                                    setProfileInputVersion((version) => version + 1);
+                                    setProfileFeedback({ message: 'Choose a JPG, PNG, or WebP image no larger than 5 MB.', error: true });
+                                    return;
+                                }
+                                setProfileFile(file);
+                                setProfileFeedback({ message: `${file.name} is ready to publish.`, error: false });
+                            }} />
+                            <button className="admin-button primary" type="submit" disabled={uploadingProfile}><i className="fas fa-upload" aria-hidden="true" /> Publish image</button>
+                        </form>
+                        <form className="profile-image-form profile-image-url-form" onSubmit={saveProfileUrl}>
+                            <input type="url" maxLength={500} placeholder="Or paste an image URL (https://…)" aria-label="Profile image URL" value={profileUrl} onChange={(event) => setProfileUrl(event.target.value)} />
+                            <button className="admin-button quiet" type="submit" disabled={savingProfileUrl}><i className="fas fa-link" aria-hidden="true" /> Use URL</button>
+                        </form>
+                        <p className={`form-feedback${profileFeedback.error ? ' error' : ''}`} aria-live="polite">{profileFeedback.message}</p>
+                    </div>
+                </div>
+            </section>
+        </>
+    );
+}
+
+function CertificateList({ certificates, onEdit, onDelete, busyId }) {
+    if (!certificates.length) return <div className="certificate-admin-list" aria-live="polite"><p className="certificate-admin-empty">No certificates have been added yet.</p></div>;
+    return <div className="certificate-admin-list" aria-live="polite">{certificates.map((certificate) => (
+        <article className="certificate-admin-item" key={certificate.documentId}>
+            <div><strong>{certificate.title}</strong><span>{certificate.institution} · {certificate.issuedAt}</span>{certificate.createdAt && <small>Uploaded {formatDateTime(certificate.createdAt)}</small>}</div>
+            <div className="certificate-admin-actions">
+                <button className="admin-button quiet" type="button" disabled={busyId === certificate.documentId} onClick={() => onEdit(certificate)}>Edit</button>
+                <button className="admin-button danger" type="button" disabled={busyId === certificate.documentId} onClick={() => onDelete(certificate)}>Delete</button>
+            </div>
+        </article>
+    ))}</div>;
+}
+
+function CvList({ cvs, onEdit, onDelete, busyId }) {
+    if (!cvs.length) return <div className="certificate-admin-list" aria-live="polite"><p className="certificate-admin-empty">No CV has been added yet.</p></div>;
+    return <div className="certificate-admin-list" aria-live="polite">{cvs.map((cv) => (
+        <article className="certificate-admin-item" key={cv.documentId}>
+            <div><strong>{cv.title}</strong><span>{cv.filename}</span>{cv.createdAt && <small>Uploaded {formatDateTime(cv.createdAt)}</small>}</div>
+            <div className="certificate-admin-actions">
+                <button className="admin-button quiet" type="button" disabled={busyId === cv.documentId} onClick={() => onEdit(cv)}>Edit</button>
+                <button className="admin-button danger" type="button" disabled={busyId === cv.documentId} onClick={() => onDelete(cv)}>Delete</button>
+            </div>
+        </article>
+    ))}</div>;
+}
+
+const EMPTY_CERTIFICATE = { id: '', type: '', title: '', description: '', issuedAt: '', institution: '' };
+
+export function AdminDocumentsPage() {
+    return <AdminPage active="documents"><DocumentsContent /></AdminPage>;
+}
+
+function DocumentsContent() {
+    const [documents, setDocuments] = useState([]);
+    const [loadingError, setLoadingError] = useState('');
+    const [cvForm, setCvForm] = useState({ title: '', description: '', issuedAt: '', institution: '' });
+    const [cvFile, setCvFile] = useState(null);
+    const [cvInputVersion, setCvInputVersion] = useState(0);
+    const [cvFeedback, setCvFeedback] = useState({ message: '', error: false });
+    const [savingCv, setSavingCv] = useState(false);
+    const [certificate, setCertificate] = useState(EMPTY_CERTIFICATE);
+    const [certificateFile, setCertificateFile] = useState(null);
+    const [certificateInputVersion, setCertificateInputVersion] = useState(0);
+    const [certificateFeedback, setCertificateFeedback] = useState({ message: '', error: false });
+    const [savingCertificate, setSavingCertificate] = useState(false);
+    const [busyId, setBusyId] = useState('');
+    const editing = Boolean(certificate.id);
+
+    const loadDocuments = useCallback(async () => {
+        const response = await apiRequest('/documents');
+        const result = await responseJson(response, 'Could not load document details.');
+        const docs = Array.isArray(result.documents) ? result.documents : [];
+        setDocuments(docs);
+    }, []);
+
+    useEffect(() => {
+        let active = true;
+        loadDocuments().catch((error) => {
+            console.error('Could not load document details:', error);
+            if (active) setLoadingError(displayError(error, 'Could not load document details.'));
+        });
+        return () => { active = false; };
+    }, [loadDocuments]);
+
+    const cvs = documents.filter((item) => item.type === 'cv');
+    const certificates = documents.filter((item) => item.type === 'certificate');
+    const now = useAdminClock();
+    const today = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(now);
+
+    async function submitCv(event) {
+        event.preventDefault();
+        if (!cvFile) {
+            setCvFeedback({ message: 'Choose a PDF file to update the CV.', error: true });
+            return;
+        }
+        if ((cvFile.type !== 'application/pdf' && !cvFile.name.toLowerCase().endsWith('.pdf')) || cvFile.size > 10 * 1024 * 1024) {
+            setCvFile(null);
+            setCvInputVersion((version) => version + 1);
+            setCvFeedback({ message: 'Choose a PDF file no larger than 10 MB to update the CV.', error: true });
+            return;
+        }
+        setSavingCv(true);
+        try {
+            const response = await apiRequest('/documents/cv', {
+                method: 'POST',
+                body: JSON.stringify({
+                    ...cvForm,
+                    filename: cvFile.name,
+                    file: await readPdfAsBase64(cvFile)
+                })
+            });
+            const result = await responseJson(response, 'Could not publish the new CV.');
+            setDocuments((current) => [...current, result.document]);
+            setCvFile(null);
+            setCvInputVersion((version) => version + 1);
+            setCvFeedback({ message: 'CV added to the document library.', error: false });
+        } catch (error) {
+            console.error('CV upload failed:', error);
+            setCvFeedback({ message: displayError(error, 'Could not publish the new CV.'), error: true });
+        } finally {
+            setSavingCv(false);
+        }
+    }
+
+    function editDocument(item) {
+        const isCv = item.type === 'cv';
+        setCertificate({
+            id: item.documentId,
+            type: item.type,
+            title: item.title,
+            description: item.description,
+            issuedAt: item.issuedAt || '',
+            institution: item.institution || ''
+        });
+        setCertificateFile(null);
+        setCertificateInputVersion((version) => version + 1);
+        setCertificateFeedback({ message: '', error: false });
+        window.requestAnimationFrame(() => {
+            document.getElementById(isCv ? 'cv-edit-form' : 'certificate-form')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            document.getElementById(isCv ? 'edit-title' : 'certificate-title')?.focus();
+        });
+    }
+
+    function resetCertificate() {
+        setCertificate(EMPTY_CERTIFICATE);
+        setCertificateFile(null);
+        setCertificateInputVersion((version) => version + 1);
+        setCertificateFeedback({ message: '', error: false });
+    }
+
+    async function deleteDocument(item) {
+        if (!window.confirm(`Delete "${item.title}" permanently? Visitors will no longer see this document. This cannot be undone.`)) return;
+        setBusyId(item.documentId);
+        try {
+            const response = await apiRequest(`/documents/${encodeURIComponent(item.documentId)}`, { method: 'DELETE' });
+            await responseJson(response, 'Could not delete the document.');
+            setDocuments((current) => current.filter((doc) => doc.documentId !== item.documentId));
+            if (certificate.id === item.documentId) resetCertificate();
+            setCertificateFeedback({ message: `"${item.title}" deleted.`, error: false });
+        } catch (error) {
+            console.error('Document delete failed:', error);
+            setCertificateFeedback({ message: displayError(error, 'Could not delete the document.'), error: true });
+        } finally {
+            setBusyId('');
+        }
+    }
+
+    async function submitCertificate(event) {
+        event.preventDefault();
+        if (!editing && !certificateFile) {
+            setCertificateFeedback({ message: 'Choose a PDF file for this certificate.', error: true });
+            return;
+        }
+        if (certificateFile && ((certificateFile.type !== 'application/pdf' && !certificateFile.name.toLowerCase().endsWith('.pdf')) || certificateFile.size > 10 * 1024 * 1024)) {
+            setCertificateFile(null);
+            setCertificateInputVersion((version) => version + 1);
+            setCertificateFeedback({ message: 'Choose a PDF file no larger than 10 MB for this certificate.', error: true });
+            return;
+        }
+        setSavingCertificate(true);
+        try {
+            const payload = {
+                title: certificate.title,
+                description: certificate.description,
+                issuedAt: certificate.issuedAt,
+                institution: certificate.institution
+            };
+            if (certificateFile) {
+                payload.filename = certificateFile.name;
+                payload.file = await readPdfAsBase64(certificateFile);
+            }
+            const response = await apiRequest(`/documents/${encodeURIComponent(certificate.id)}`, {
+                method: 'PUT',
+                body: JSON.stringify(payload)
+            });
+            await responseJson(response, 'Could not save the document.');
+            const saved = (await response.clone().json()).document;
+            setDocuments((current) => current.map((item) => item.documentId === certificate.id ? saved : item));
+            resetCertificate();
+            setCertificateFeedback({ message: 'Document updated for all visitors.', error: false });
+        } catch (error) {
+            console.error('Certificate update failed:', error);
+            setCertificateFeedback({ message: displayError(error, 'Could not save the certificate.'), error: true });
+        } finally {
+            setSavingCertificate(false);
+        }
+    }
+
+    return (
+            <>
+                    <section className="admin-heading"><div><p className="admin-eyebrow">DOCUMENT LIBRARY</p><h1>CV &amp; certificates</h1><p className="admin-subheading">Publish a CV and manage certificate details shown to visitors.</p></div><div className="admin-date"><i className="far fa-calendar" aria-hidden="true" /> <span>{today}</span></div></section>
+                    <section id="documents" className="admin-panel admin-page-panel">
+                        <div className="panel-heading"><div><p className="admin-eyebrow">DOCUMENT LIBRARY</p><h2>Curriculum vitae</h2></div><span className="section-icon"><i className="fas fa-file-arrow-up" aria-hidden="true" /></span></div>
+                        <p className="panel-description">Add a CV with its title, summary, date, and institution. Edit or delete any CV at any time — adding keeps the existing ones.</p>
+                        <CvList cvs={cvs} onEdit={editDocument} onDelete={deleteDocument} busyId={busyId} />
+                        {loadingError && <p className="form-feedback error" role="status">{loadingError}</p>}
+                        <form className="admin-form upload-form" onSubmit={submitCv} id={certificate.type === 'cv' ? 'cv-edit-form' : 'cv-add-form'}>
+                            {certificate.type === 'cv' && editing ? (
+                                <>
+                                    <div className="panel-heading"><p className="admin-eyebrow">EDITING CV</p><h2>{certificate.title}</h2></div>
+                                    <label htmlFor="edit-title">CV title</label><input id="edit-title" name="title" maxLength={120} required value={certificate.title} onChange={(event) => setCertificate({ ...certificate, title: event.target.value })} />
+                                    <label htmlFor="edit-description">Description</label><textarea id="edit-description" name="description" rows={3} maxLength={2000} required value={certificate.description} onChange={(event) => setCertificate({ ...certificate, description: event.target.value })} />
+                                    <label htmlFor="edit-issued-at">Date issued <span>(optional)</span></label><input id="edit-issued-at" name="issuedAt" type="date" value={certificate.issuedAt} onChange={(event) => setCertificate({ ...certificate, issuedAt: event.target.value })} />
+                                    <label htmlFor="edit-institution">Institution <span>(optional)</span></label><input id="edit-institution" name="institution" maxLength={160} value={certificate.institution} onChange={(event) => setCertificate({ ...certificate, institution: event.target.value })} />
+                                    <label className="admin-button quiet browse-button" htmlFor="certificate-file-input"><i className="fas fa-folder-open" aria-hidden="true" /> {certificateFile ? certificateFile.name : 'Browse PDF (optional - keeps current)'}</label>
+                                    <div className="form-actions"><button className="admin-button primary" type="submit" disabled={savingCertificate}><i className="fas fa-check" aria-hidden="true" /> Save changes</button><button className="admin-button quiet" type="button" onClick={resetCertificate}>Cancel edit</button></div>
+                                    <p className={`form-feedback${certificateFeedback.error ? ' error' : ''}`} aria-live="polite">{certificateFeedback.message}</p>
+                                </>
+                            ) : (
+                                <>
+                                    <label htmlFor="cv-title">CV title</label><input id="cv-title" name="title" maxLength={120} required value={cvForm.title} onChange={(event) => setCvForm({ ...cvForm, title: event.target.value })} />
+                                    <label htmlFor="cv-description">Description</label><textarea id="cv-description" name="description" rows={3} maxLength={2000} required value={cvForm.description} onChange={(event) => setCvForm({ ...cvForm, description: event.target.value })} />
+                                    <label htmlFor="cv-issued-at">Date issued <span>(optional)</span></label><input id="cv-issued-at" name="issuedAt" type="date" value={cvForm.issuedAt} onChange={(event) => setCvForm({ ...cvForm, issuedAt: event.target.value })} />
+                                    <label htmlFor="cv-institution">Institution <span>(optional)</span></label><input id="cv-institution" name="institution" maxLength={160} value={cvForm.institution} onChange={(event) => setCvForm({ ...cvForm, institution: event.target.value })} />
+                                    <label className="admin-button quiet browse-button" htmlFor="cv-file-input"><i className="fas fa-folder-open" aria-hidden="true" /> {cvFile ? cvFile.name : 'Browse CV PDF (required)'}</label>
+                                    <button className="admin-button primary" type="submit" disabled={savingCv}><i className="fas fa-plus" aria-hidden="true" /> Add CV</button>
+                                    <p className={`form-feedback${cvFeedback.error ? ' error' : ''}`} aria-live="polite">{cvFeedback.message}</p>
+                                </>
+                            )}
+                        </form>
+                        <div className="certificate-admin-section">
+                            <div className="panel-heading"><div><p className="admin-eyebrow">CERTIFICATE LIBRARY</p><h2>Certificates</h2></div><span className="section-icon"><i className="fas fa-certificate" aria-hidden="true" /></span></div>
+                            <p className="panel-description">Add certificates with their title, description, issue date, institution, and PDF. Edit the details, replace the PDF, or delete any entry.</p>
+                            <CertificateList certificates={certificates} onEdit={editDocument} onDelete={deleteDocument} busyId={busyId} />
+                            {!(editing && certificate.type === 'certificate') && (
+                            <form id="certificate-form" className="admin-form upload-form" onSubmit={submitCertificate}>
+                                <label htmlFor="certificate-title">Certificate title</label><input id="certificate-title" name="title" maxLength={120} required value={certificate.type === 'certificate' ? certificate.title : (certificate.id ? '' : certificate.title)} onChange={(event) => setCertificate({ ...certificate, title: event.target.value })} />
+                                <label htmlFor="certificate-description">Description</label><textarea id="certificate-description" name="description" rows={3} maxLength={2000} required value={certificate.type === 'certificate' ? certificate.description : certificate.title ? '' : certificate.description} onChange={(event) => setCertificate({ ...certificate, description: event.target.value })} />
+                                <label htmlFor="certificate-issued-at">Date issued</label><input id="certificate-issued-at" name="issuedAt" type="date" required value={certificate.type === 'certificate' ? certificate.issuedAt : ''} onChange={(event) => setCertificate({ ...certificate, issuedAt: event.target.value })} />
+                                <label htmlFor="certificate-institution">Institution</label><input id="certificate-institution" name="institution" maxLength={160} required value={certificate.type === 'certificate' ? certificate.institution : ''} onChange={(event) => setCertificate({ ...certificate, institution: event.target.value })} />
+                                <label className="admin-button quiet browse-button" htmlFor="certificate-file-input"><i className="fas fa-folder-open" aria-hidden="true" /> {certificateFile ? certificateFile.name : 'Browse certificate PDF (required)'}</label>
+                                <div className="form-actions"><button className="admin-button primary" type="submit" disabled={savingCertificate}><i className="fas fa-plus" aria-hidden="true" /> Add certificate</button></div>
+                                <p className={`form-feedback${certificateFeedback.error ? ' error' : ''}`} aria-live="polite">{certificateFeedback.message}</p>
+                            </form>
+                            )}
+                        </div>
+                    </section>
+            </>
+    );
+}
