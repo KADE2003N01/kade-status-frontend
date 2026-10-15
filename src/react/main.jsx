@@ -18,7 +18,7 @@ import {
   AdminOverviewPage,
   AdminProfilePage
 } from './AdminPages.jsx';
-import { API_BASE_URL } from './api.js';
+import { API_BASE_URL, API_BASE_URLS } from './api.js';
 import GlobalStyles from './GlobalStyles.jsx';
 
 const publicPages = {
@@ -41,6 +41,7 @@ const adminPages = {
 const fileName = window.location.pathname.split('/').pop() || 'index.html';
 const [Page, bodyClassName] = publicPages[fileName] || adminPages[fileName] || publicPages['index.html'];
 window.PORTFOLIO_API_BASE_URL = API_BASE_URL;
+window.PORTFOLIO_API_BASE_URLS = API_BASE_URLS;
 document.body.className = bodyClassName;
 document.title = document.querySelector('title')?.textContent || 'David KWIZERA | Portfolio';
 

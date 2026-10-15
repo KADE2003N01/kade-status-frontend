@@ -1,11 +1,11 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { API_BASE_URL } from './api.js';
+import { apiFetch } from './api.js';
 
 const ADMIN_LOGIN_URL = 'admin-login.html';
 const AdminSessionContext = createContext(null);
 
 async function apiRequest(path, options = {}) {
-    const response = await fetch(`${API_BASE_URL}${path}`, {
+    const response = await apiFetch(path, {
         ...options,
         credentials: 'include',
         headers: options.body && typeof options.body === 'string'
@@ -61,7 +61,7 @@ function useAdminSession() {
         let active = true;
         (async () => {
             try {
-                const response = await fetch(`${API_BASE_URL}/auth/me`, { credentials: 'include' });
+                const response = await apiFetch('/auth/me', { credentials: 'include' });
                 if (response.status === 401) {
                     window.location.replace(ADMIN_LOGIN_URL);
                     return;
@@ -294,7 +294,7 @@ export function AdminLoginPage() {
             setFeedback('Could not verify your previous session. Sign in again to continue.');
         }
         let active = true;
-        fetch(`${API_BASE_URL}/auth/me`, { credentials: 'include' })
+        apiFetch('/auth/me', { credentials: 'include' })
             .then(async (response) => {
                 if (response.ok) {
                     window.location.replace('admin.html');
@@ -317,7 +317,7 @@ export function AdminLoginPage() {
         setFeedback('');
         setSubmitting(true);
         try {
-            const response = await fetch(`${API_BASE_URL}/auth/login`, {
+            const response = await apiFetch('/auth/login', {
                 method: 'POST',
                 credentials: 'include',
                 headers: { 'Content-Type': 'application/json' },

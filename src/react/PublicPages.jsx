@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { API_BASE_URL } from './api.js';
+import { apiFetch } from './api.js';
 import backgroundImageUrl from '../media/background image.jpeg';
-
-const API_BASE = API_BASE_URL;
 
 const NAV_ITEMS = [
   ['Home', 'index.html', '../index.html'],
@@ -35,7 +33,7 @@ function useProfileImage(homepage = false) {
   const [profileImage, setProfileImage] = useState('');
   useEffect(() => {
     let active = true;
-    fetch(`${API_BASE}/homepage`)
+    apiFetch('/homepage')
       .then(async (response) => {
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Could not load the published profile image.');
@@ -335,7 +333,7 @@ function Homepage() {
   const [content, setContent] = useState(homepageFallback);
   useEffect(() => {
     let active = true;
-    fetch(`${API_BASE}/homepage`)
+    apiFetch('/homepage')
       .then(async (response) => {
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Could not load landing-page content.');
@@ -562,7 +560,7 @@ function ContactPage() {
     }
     setSending(true);
     try {
-      const response = await fetch(`${API_BASE}/contact/`, {
+      const response = await apiFetch('/contact/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
@@ -688,7 +686,7 @@ function DownloadModal({ requestedDocumentId, onClose }) {
     setBusy(selectedChannel);
     setSuccess(false);
     try {
-      const response = await fetch(`${API_BASE}/downloads/request`, {
+      const response = await apiFetch('/downloads/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ documentId: requestedDocumentId, name: name.trim(), email: email.trim(), phone: phone.trim(), reason: reason.trim(), channel: selectedChannel, consent })
@@ -719,7 +717,7 @@ function DownloadModal({ requestedDocumentId, onClose }) {
     setBusy('verify');
     setSuccess(false);
     try {
-      const response = await fetch(`${API_BASE}/downloads/verify`, {
+      const response = await apiFetch('/downloads/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ challengeId, code: code.trim() })
@@ -740,7 +738,7 @@ function DownloadModal({ requestedDocumentId, onClose }) {
     if (!authorization) return;
     setBusy('download');
     try {
-      const response = await fetch(`${API_BASE}/downloads/file`, {
+      const response = await apiFetch('/downloads/file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: authorization.token })
@@ -828,7 +826,7 @@ function DocumentsPage() {
   const openDownload = (documentId) => setRequestedDocumentId(documentId);
   useEffect(() => {
     let active = true;
-    fetch(`${API_BASE}/documents`)
+    apiFetch('/documents')
       .then(async (response) => {
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Could not load document details.');
@@ -884,7 +882,7 @@ function DocumentsPage() {
       return;
     }
     setFeedback('Loading document preview…');
-    fetch(`${API_BASE}/downloads/preview/${encodeURIComponent(documentId)}`)
+    apiFetch(`/downloads/preview/${encodeURIComponent(documentId)}`)
       .then(async (response) => {
         if (!response.ok) {
           const result = await response.json();
