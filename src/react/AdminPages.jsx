@@ -250,10 +250,10 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
                         <span className="admin-account-details"><strong>{session.displayName}</strong><small>{session.email}</small></span>
                     </div>
                     <div className="admin-sidebar-spacer" />
+                    {logoutError && <p className="form-feedback error" role="status">{logoutError}</p>}
                     <button className="admin-logout" type="button" onClick={logout} disabled={loggingOut}>
                         <i className="fas fa-right-from-bracket" aria-hidden="true" /> {loggingOut ? 'Logging out…' : 'Log out'}
                     </button>
-                    {logoutError && <p className="form-feedback error" role="status">{logoutError}</p>}
                 </aside>
                 <div className="admin-content">
                     {children}
@@ -437,7 +437,7 @@ function OverviewContentPage() {
 }
 
 function OverviewDocumentList({ documents, onQuickDelete, busyId, actionFeedback }) {
-    const items = documents.filter((item) => item.type !== 'document');
+    const items = [...documents];
     if (!items.length) {
         return <div className="certificate-admin-list"><p className="certificate-admin-empty">No documents uploaded yet.</p></div>;
     }
@@ -503,6 +503,7 @@ function DownloadsContent() {
     const [search, setSearch] = useState('');
     const [actionError, setActionError] = useState('');
     const [deletingId, setDeletingId] = useState('');
+    const [listExpanded, setListExpanded] = useState(false);
     const { downloads, error, setError, lastUpdated, refreshing, refresh } = useAdminDownloads(true);
     const filtered = useMemo(() => {
         const query = search.trim().toLowerCase();
@@ -542,16 +543,20 @@ function DownloadsContent() {
                             <div><p className="admin-eyebrow">REQUEST HISTORY</p><h2>Recent downloads</h2></div>
                             <div className="download-tools">
                                 <label className="search-box"><i className="fas fa-search" aria-hidden="true" /><span className="sr-only">Search downloads</span><input type="search" placeholder="Search by name, contact or purpose" value={search} onChange={(event) => setSearch(event.target.value)} /></label>
+                                <button className="admin-button quiet" type="button" aria-expanded={listExpanded} onClick={() => setListExpanded((value) => !value)}><i className={`fas ${listExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} aria-hidden="true" /> {listExpanded ? 'Collapse list' : 'Expand list'}</button>
                                 <button className="admin-button quiet" type="button" disabled={refreshing} onClick={() => refresh()}><i className="fas fa-rotate" aria-hidden="true" /> Refresh</button>
                             </div>
                         </div>
                         <p className="downloads-updated">Live clock <time dateTime={now.toISOString()}>{formatDateTime(now, true)}</time><span>Last refreshed <time>{lastUpdated || 'Not yet'}</time></span></p>
                         {(error || actionError) && <p className="form-feedback error" role="status">{actionError || error}</p>}
                         <div className="table-wrap">
+                            <p className="list-collapsed-note" hidden={listExpanded || filtered.length <= 5}>
+                                <i className="fas fa-eye-slash" aria-hidden="true" /> {filtered.length} download requests are hidden. Use “Expand list” to show all of them.
+                            </p>
                             <table className="download-table">
                                 <thead><tr><th>VISITOR</th><th>CONTACT</th><th>DOCUMENT &amp; PURPOSE</th><th>DATE</th><th>STATUS</th><th>ACTION</th></tr></thead>
                                 <tbody>
-                                    {filtered.map((item) => (
+                                    {(listExpanded ? filtered : filtered.slice(0, 5)).map((item) => (
                                         <tr key={item.id}>
                                             <td><div className="visitor-cell"><span className="visitor-avatar">{(item.name || '').trim().split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</span><span className="visitor-name">{item.name}</span></div></td>
                                             <td><span className="contact-cell"><i className={`fas ${item.email ? 'fa-envelope' : 'fa-phone'}`} aria-hidden="true" /><span>{item.email || item.phone}</span></span></td>
@@ -989,6 +994,18 @@ function ProfileContent() {
     );
 }
 
+function OtherDocumentList({ documents, onDelete, busyId }) {
+    if (!documents.length) return null;
+    return <div className="certificate-admin-list" aria-live="polite">{documents.map((doc) => (
+        <article className="certificate-admin-item" key={doc.documentId}>
+            <div><strong>{doc.title}</strong><span>{doc.institution} · {doc.issuedAt}</span>{doc.createdAt && <small>Uploaded {formatDateTime(doc.createdAt)}</small>}</div>
+            <div className="certificate-admin-actions">
+                <button className="admin-button danger" type="button" disabled={busyId === doc.documentId} onClick={() => onDelete(doc)}>Delete</button>
+            </div>
+        </article>
+    ))}</div>;
+}
+
 function CertificateList({ certificates, onEdit, onDelete, busyId }) {
     if (!certificates.length) return <div className="certificate-admin-list" aria-live="polite"><p className="certificate-admin-empty">No certificates have been added yet.</p></div>;
     return <div className="certificate-admin-list" aria-live="polite">{certificates.map((certificate) => (
@@ -1055,6 +1072,7 @@ function DocumentsContent() {
 
     const cvs = documents.filter((item) => item.type === 'cv');
     const certificates = documents.filter((item) => item.type === 'certificate');
+    const otherDocuments = documents.filter((item) => item.type === 'document');
     const now = useAdminClock();
     const today = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(now);
 
@@ -1160,17 +1178,28 @@ function DocumentsContent() {
                 payload.filename = certificateFile.name;
                 payload.file = await readPdfAsBase64(certificateFile);
             }
-            const response = await apiRequest(`/documents/${encodeURIComponent(certificate.id)}`, {
-                method: 'PUT',
-                body: JSON.stringify(payload)
-            });
-            await responseJson(response, 'Could not save the document.');
-            const saved = (await response.clone().json()).document;
-            setDocuments((current) => current.map((item) => item.documentId === certificate.id ? saved : item));
-            resetCertificate();
-            setCertificateFeedback({ message: 'Document updated for all visitors.', error: false });
+            if (editing) {
+                const response = await apiRequest(`/documents/${encodeURIComponent(certificate.id)}`, {
+                    method: 'PUT',
+                    body: JSON.stringify(payload)
+                });
+                await responseJson(response, 'Could not save the document.');
+                const saved = (await response.clone().json()).document;
+                setDocuments((current) => current.map((item) => item.documentId === certificate.id ? saved : item));
+                resetCertificate();
+                setCertificateFeedback({ message: 'Document updated for all visitors.', error: false });
+            } else {
+                const response = await apiRequest('/documents/certificates', {
+                    method: 'POST',
+                    body: JSON.stringify(payload)
+                });
+                const result = await responseJson(response, 'Could not add the certificate.');
+                setDocuments((current) => [...current, result.document]);
+                resetCertificate();
+                setCertificateFeedback({ message: 'Certificate added to the library. Visitors can see it now.', error: false });
+            }
         } catch (error) {
-            console.error('Certificate update failed:', error);
+            console.error('Certificate save failed:', error);
             setCertificateFeedback({ message: displayError(error, 'Could not save the certificate.'), error: true });
         } finally {
             setSavingCertificate(false);
@@ -1194,6 +1223,12 @@ function DocumentsContent() {
                                     <label htmlFor="edit-issued-at">Date issued <span>(optional)</span></label><input id="edit-issued-at" name="issuedAt" type="date" value={certificate.issuedAt} onChange={(event) => setCertificate({ ...certificate, issuedAt: event.target.value })} />
                                     <label htmlFor="edit-institution">Institution <span>(optional)</span></label><input id="edit-institution" name="institution" maxLength={160} value={certificate.institution} onChange={(event) => setCertificate({ ...certificate, institution: event.target.value })} />
                                     <label className="admin-button quiet browse-button" htmlFor="certificate-file-input"><i className="fas fa-folder-open" aria-hidden="true" /> {certificateFile ? certificateFile.name : 'Browse PDF (optional - keeps current)'}</label>
+                                    <input key={`cert-file-${certificateInputVersion}`} id="certificate-file-input" type="file" accept="application/pdf,.pdf" hidden onChange={(event) => {
+                                        const file = event.target.files?.[0];
+                                        if (!file) return;
+                                        setCertificateFile(file);
+                                        setCertificateFeedback({ message: `${file.name} is ready to save.`, error: false });
+                                    }} />
                                     <div className="form-actions"><button className="admin-button primary" type="submit" disabled={savingCertificate}><i className="fas fa-check" aria-hidden="true" /> Save changes</button><button className="admin-button quiet" type="button" onClick={resetCertificate}>Cancel edit</button></div>
                                     <p className={`form-feedback${certificateFeedback.error ? ' error' : ''}`} aria-live="polite">{certificateFeedback.message}</p>
                                 </>
@@ -1204,22 +1239,41 @@ function DocumentsContent() {
                                     <label htmlFor="cv-issued-at">Date issued <span>(optional)</span></label><input id="cv-issued-at" name="issuedAt" type="date" value={cvForm.issuedAt} onChange={(event) => setCvForm({ ...cvForm, issuedAt: event.target.value })} />
                                     <label htmlFor="cv-institution">Institution <span>(optional)</span></label><input id="cv-institution" name="institution" maxLength={160} value={cvForm.institution} onChange={(event) => setCvForm({ ...cvForm, institution: event.target.value })} />
                                     <label className="admin-button quiet browse-button" htmlFor="cv-file-input"><i className="fas fa-folder-open" aria-hidden="true" /> {cvFile ? cvFile.name : 'Browse CV PDF (required)'}</label>
+                                    <input key={`cv-file-${cvInputVersion}`} id="cv-file-input" type="file" accept="application/pdf,.pdf" hidden onChange={(event) => {
+                                        const file = event.target.files?.[0];
+                                        if (!file) return;
+                                        setCvFile(file);
+                                        setCvFeedback({ message: `${file.name} is ready to publish.`, error: false });
+                                    }} />
                                     <button className="admin-button primary" type="submit" disabled={savingCv}><i className="fas fa-plus" aria-hidden="true" /> Add CV</button>
                                     <p className={`form-feedback${cvFeedback.error ? ' error' : ''}`} aria-live="polite">{cvFeedback.message}</p>
                                 </>
                             )}
                         </form>
+                        {otherDocuments.length > 0 && (
+                        <div className="certificate-admin-section">
+                            <div className="panel-heading"><div><p className="admin-eyebrow">OTHER DOCUMENTS</p><h2>Documents</h2></div><span className="section-icon"><i className="fas fa-file-alt" aria-hidden="true" /></span></div>
+                            <p className="panel-description">Standalone documents shown in the visitor document center. Delete any entry you no longer want visitors to see.</p>
+                            <OtherDocumentList documents={otherDocuments} onDelete={deleteDocument} busyId={busyId} />
+                        </div>
+                        )}
                         <div className="certificate-admin-section">
                             <div className="panel-heading"><div><p className="admin-eyebrow">CERTIFICATE LIBRARY</p><h2>Certificates</h2></div><span className="section-icon"><i className="fas fa-certificate" aria-hidden="true" /></span></div>
                             <p className="panel-description">Add certificates with their title, description, issue date, institution, and PDF. Edit the details, replace the PDF, or delete any entry.</p>
                             <CertificateList certificates={certificates} onEdit={editDocument} onDelete={deleteDocument} busyId={busyId} />
                             {!(editing && certificate.type === 'certificate') && (
                             <form id="certificate-form" className="admin-form upload-form" onSubmit={submitCertificate}>
-                                <label htmlFor="certificate-title">Certificate title</label><input id="certificate-title" name="title" maxLength={120} required value={certificate.type === 'certificate' ? certificate.title : (certificate.id ? '' : certificate.title)} onChange={(event) => setCertificate({ ...certificate, title: event.target.value })} />
-                                <label htmlFor="certificate-description">Description</label><textarea id="certificate-description" name="description" rows={3} maxLength={2000} required value={certificate.type === 'certificate' ? certificate.description : certificate.title ? '' : certificate.description} onChange={(event) => setCertificate({ ...certificate, description: event.target.value })} />
-                                <label htmlFor="certificate-issued-at">Date issued</label><input id="certificate-issued-at" name="issuedAt" type="date" required value={certificate.type === 'certificate' ? certificate.issuedAt : ''} onChange={(event) => setCertificate({ ...certificate, issuedAt: event.target.value })} />
-                                <label htmlFor="certificate-institution">Institution</label><input id="certificate-institution" name="institution" maxLength={160} required value={certificate.type === 'certificate' ? certificate.institution : ''} onChange={(event) => setCertificate({ ...certificate, institution: event.target.value })} />
+                                <label htmlFor="certificate-title">Certificate title</label><input id="certificate-title" name="title" maxLength={120} required value={editing ? certificate.title : certificate.title} onChange={(event) => setCertificate({ ...certificate, title: event.target.value })} />
+                                <label htmlFor="certificate-description">Description</label><textarea id="certificate-description" name="description" rows={3} maxLength={2000} required value={editing ? certificate.description : certificate.description} onChange={(event) => setCertificate({ ...certificate, description: event.target.value })} />
+                                <label htmlFor="certificate-issued-at">Date issued</label><input id="certificate-issued-at" name="issuedAt" type="date" required value={editing ? certificate.issuedAt : certificate.issuedAt} onChange={(event) => setCertificate({ ...certificate, issuedAt: event.target.value })} />
+                                <label htmlFor="certificate-institution">Institution</label><input id="certificate-institution" name="institution" maxLength={160} required value={editing ? certificate.institution : certificate.institution} onChange={(event) => setCertificate({ ...certificate, institution: event.target.value })} />
                                 <label className="admin-button quiet browse-button" htmlFor="certificate-file-input"><i className="fas fa-folder-open" aria-hidden="true" /> {certificateFile ? certificateFile.name : 'Browse certificate PDF (required)'}</label>
+                                <input key={`cert-file-${certificateInputVersion}`} id="certificate-file-input" type="file" accept="application/pdf,.pdf" hidden onChange={(event) => {
+                                    const file = event.target.files?.[0];
+                                    if (!file) return;
+                                    setCertificateFile(file);
+                                    setCertificateFeedback({ message: `${file.name} is ready to add.`, error: false });
+                                }} />
                                 <div className="form-actions"><button className="admin-button primary" type="submit" disabled={savingCertificate}><i className="fas fa-plus" aria-hidden="true" /> Add certificate</button></div>
                                 <p className={`form-feedback${certificateFeedback.error ? ' error' : ''}`} aria-live="polite">{certificateFeedback.message}</p>
                             </form>

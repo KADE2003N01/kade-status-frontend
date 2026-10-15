@@ -2101,6 +2101,8 @@ footer:not(.admin-footer) .footer-built a {
 .admin-logout {
   min-height: 40px;
   margin-top: 10px;
+  margin-bottom: 5px;
+  align-self: flex-start;
   border: 1.5px solid var(--border);
   border-radius: 10px;
   color: var(--accent);
@@ -3557,8 +3559,22 @@ html.dark-theme .admin-button.danger:hover {
   }
   .admin-logout {
     grid-column: 1 / -1;
+    justify-self: start;
+    min-width: 0;
     min-height: 36px;
     margin-top: 6px;
+    margin-bottom: 5px;
+  }
+  .admin-sidebar-spacer {
+    display: none;
+  }
+  .form-actions {
+    flex-direction: column;
+  }
+  .form-actions .admin-button,
+  .form-actions a.admin-button {
+    width: 100%;
+    justify-content: center;
   }
   .admin-logout::after {
     left: 50%;

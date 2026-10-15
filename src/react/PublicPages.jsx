@@ -821,6 +821,8 @@ function DocumentsPage() {
   const [previews, setPreviews] = useState({});
   const [loading, setLoading] = useState(true);
   const [requestedDocumentId, setRequestedDocumentId] = useState('');
+  const [certificatesExpanded, setCertificatesExpanded] = useState(false);
+  const [moreCvsExpanded, setMoreCvsExpanded] = useState(false);
   const previewUrls = useRef(new Map());
   const previewPanels = useRef(new Map());
   const openDownload = (documentId) => setRequestedDocumentId(documentId);
@@ -843,17 +845,8 @@ function DocumentsPage() {
     };
   }, []);
   const cvList = documents.filter((item) => item.type === 'cv');
-  const cv = cvList[0] || documents.find((item) => item.documentId === 'cv') || {
-    documentId: 'cv',
-    title: 'Curriculum Vitae', filename: 'KWIZERA David CV.pdf',
-    description: 'My curriculum vitae provides a comprehensive overview of my technical expertise, educational background at the University of Rwanda, and professional contributions to the field of software engineering.',
-    institution: '', issuedAt: '', updatedAt: ''
-  };
-  const ebc = documents.find((item) => item.documentId === 'ebc') || {
-    documentId: 'ebc', title: 'EBC Document 2026', description: 'Event Planning & Management',
-    longDescription: 'Comprehensive event planning documentation and strategic management guidelines for professional event coordination.',
-    institution: 'EBC Organization', issuedAt: '2026'
-  };
+  const cv = cvList[0] || documents.find((item) => item.documentId === 'cv') || null;
+  const ebc = documents.find((item) => item.documentId === 'ebc') || null;
   const certificates = documents.filter((item) => item.type === 'certificate');
   const openFullscreen = (panel) => {
     if (!panel || document.fullscreenElement) return;
@@ -924,6 +917,8 @@ function DocumentsPage() {
           <div className="doc-feature-grid"><div className="doc-feature-item"><i className="fas fa-shield-alt text-accent"></i><span className="font-bold">Secure Download</span></div><div className="doc-feature-item"><i className="fas fa-clock text-accent"></i><span className="font-bold">Always Current</span></div><div className="doc-feature-item"><i className="fas fa-file-pdf text-accent"></i><span className="font-bold">PDF Format</span></div></div>
         </div>
         <div className="doc-card-cv-section">
+          {cv ? (
+          <>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 20 }}>
               <div style={{ width: 56, height: 56, background: 'var(--accent-soft)', border: '1.5px solid var(--border-strong)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
@@ -955,13 +950,17 @@ function DocumentsPage() {
               <i className="fas fa-calendar-alt" style={{ color: 'var(--accent)', marginRight: 6 }}></i>Uploaded: <span id="cv-last-updated">{(cv.createdAt || cv.updatedAt) ? dateFormat(cv.createdAt || cv.updatedAt, { dateStyle: 'medium' }) : 'Not published yet'}</span> • <i className="fas fa-info-circle" style={{ color: 'var(--accent)', margin: '0 6px 0 10px' }}></i>File: <span id="cv-public-file-name">{cv?.filename || 'KWIZERA David CV.pdf'}</span>
             </p>
           </div>
+          </>
+          ) : (
+          <div className="document-add-slot cv-add-slot"><span className="document-add-icon"><i className="fas fa-file-circle-xmark" aria-hidden="true"></i></span><h3>No CV published yet</h3><p>The curriculum vitae has been removed. It will appear here again once a new CV is published.</p></div>
+          )}
         </div>
-        {cvList.length > 1 && (
+        {cv && cvList.length > 1 && (
           <div className="document-add-slot cv-add-slot" style={{ borderStyle: 'solid' }}>
             <span className="document-add-icon"><i className="fas fa-file-lines" aria-hidden="true"></i></span>
             <h3>More CVs ({cvList.length - 1})</h3>
             <p>Older curriculum vitae versions also available in the document center.</p>
-            {cvList.slice(1).map((older) => (
+            {(moreCvsExpanded ? cvList.slice(1) : cvList.slice(1, 1 + 3)).map((older) => (
               <div key={older.documentId} style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
                 <span style={{ color: 'var(--text)', fontWeight: 700 }}>{older.title}</span>
                 <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Uploaded {(older.createdAt || older.updatedAt) ? dateFormat(older.createdAt || older.updatedAt, { dateStyle: 'medium' }) : ''}</span>
@@ -969,13 +968,25 @@ function DocumentsPage() {
                 <button className="doc-card-button doc-btn-outline" type="button" onClick={() => openDownload(older.documentId)}><i className="fas fa-download" aria-hidden="true"></i>Download</button>
               </div>
             ))}
+            {cvList.length - 1 > 3 && (
+              <button className="doc-card-button doc-btn-outline" type="button" style={{ width: '100%', justifyContent: 'center' }} aria-expanded={moreCvsExpanded} onClick={() => setMoreCvsExpanded((value) => !value)}>
+                <i className={`fas ${moreCvsExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} aria-hidden="true"></i> {moreCvsExpanded ? 'Collapse list' : `Expand all ${cvList.length - 1} CVs`}
+              </button>
+            )}
           </div>
         )}
         <div className="document-add-slot cv-add-slot"><span className="document-add-icon"><i className="fas fa-file-circle-plus" aria-hidden="true"></i></span><h3>Add a CV</h3><p>Sign in as the administrator to publish or replace the latest CV.</p><a className="doc-card-button doc-btn-outline" href="admin-login.html">Add CV</a></div>
         <p id="documents-feedback" className="documents-feedback" role="status" aria-live="polite">{loading ? '' : feedback}</p>
         <div className="mt-lg text-left">
-          <div className="text-center mb-lg"><h2 className="doc-title-main" style={{ fontSize: 'clamp(1.5rem, 5vw, 2.2rem)' }}><i className="fas fa-certificate text-accent mr-sm"></i> Certificates &amp; Documents</h2></div>
+          <div className="text-center mb-lg"><h2 className="doc-title-main" style={{ fontSize: 'clamp(1.5rem, 5vw, 2.2rem)' }}><i className="fas fa-certificate text-accent mr-sm"></i> Certificates &amp; Documents</h2>
+            {(certificates.length + (ebc ? 1 : 0)) > 6 && (
+              <button className="doc-card-button doc-btn-outline" type="button" aria-expanded={certificatesExpanded} onClick={() => setCertificatesExpanded((value) => !value)}>
+                <i className={`fas ${certificatesExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} aria-hidden="true"></i> {certificatesExpanded ? 'Collapse list' : `Expand all ${certificates.length + (ebc ? 1 : 0)} documents`}
+              </button>
+            )}
+          </div>
           <div className="grid-responsive">
+            {ebc && (
             <div className="document-file-card" data-document-id="ebc" style={{ padding: 26 }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
@@ -1006,7 +1017,8 @@ function DocumentsPage() {
                 </div>
               </div>
             </div>
-            {certificates.map((certificate) => <article className="document-file-card" data-certificate-card key={certificate.documentId}>
+            )}
+            {(certificatesExpanded ? certificates : certificates.slice(0, 6)).map((certificate) => <article className="document-file-card" data-certificate-card key={certificate.documentId}>
               <div className="public-certificate-heading"><span className="public-certificate-icon"><i className="fas fa-certificate" aria-hidden="true"></i></span><div><h3>{certificate.title}</h3><span className="public-certificate-type">Professional certificate</span></div></div>
               <p className="public-certificate-description">{certificate.description}</p>
               <div className="public-document-actions"><button className="doc-card-button doc-btn-outline" type="button" aria-expanded={Boolean(previews[certificate.documentId])} onClick={() => showPreview(certificate.documentId)}>{previews[certificate.documentId] ? <><i className="fas fa-eye-slash" aria-hidden="true"></i>Hide document</> : <><i className="fas fa-eye" aria-hidden="true"></i>View full document</>}</button><button className="doc-card-button doc-btn-outline" type="button" onClick={() => openDownload(certificate.documentId)}><i className="fas fa-download" aria-hidden="true"></i>Download</button></div>
