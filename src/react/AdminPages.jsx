@@ -1,17 +1,52 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
 import { apiFetch } from './api.js';
+import TimedNotification from './TimedNotification.jsx';
 
 const ADMIN_LOGIN_URL = 'admin-login.html';
 const AdminSessionContext = createContext(null);
+const ADMIN_NOTIFICATION_EVENT = 'kade-admin-notification';
+
+function notifyAdmin(message, tone = 'success') {
+    window.dispatchEvent(new CustomEvent(ADMIN_NOTIFICATION_EVENT, { detail: { message, tone } }));
+}
+
+function actionSuccessMessage(method, path) {
+    if (path === '/homepage' && method === 'PUT') return 'Homepage changes published successfully.';
+    if (path === '/homepage/reset') return 'Homepage defaults restored successfully.';
+    if (path === '/homepage/profile-image') return 'Profile image published successfully.';
+    if (path === '/documents/cv') return 'CV published successfully.';
+    if (path.startsWith('/documents/certificates')) return method === 'PUT' ? 'Certificate updated successfully.' : 'Certificate saved successfully.';
+    if (path.startsWith('/documents/') && method === 'DELETE') return 'Document deleted successfully.';
+    if (path.startsWith('/downloads/') && method === 'DELETE') return 'Download request deleted successfully.';
+    if (path === '/auth/logout') return 'Signed out successfully.';
+    return 'Changes saved successfully.';
+}
 
 async function apiRequest(path, options = {}) {
-    const response = await apiFetch(path, {
-        ...options,
-        credentials: 'include',
-        headers: options.body && typeof options.body === 'string'
-            ? { 'Content-Type': 'application/json', ...options.headers }
-            : options.headers
-    });
+    const { silentNotification = false, ...requestOptions } = options;
+    const method = (requestOptions.method || 'GET').toUpperCase();
+    let response;
+    try {
+        response = await apiFetch(path, {
+            ...requestOptions,
+            credentials: 'include',
+            headers: requestOptions.body && typeof requestOptions.body === 'string'
+                ? { 'Content-Type': 'application/json', ...requestOptions.headers }
+                : requestOptions.headers
+        });
+    } catch (error) {
+        if (method !== 'GET' && !silentNotification) notifyAdmin(displayError(error, 'The action could not be completed.'), 'error');
+        throw error;
+    }
+
+    if (method !== 'GET' && !silentNotification) {
+        if (response.ok) {
+            notifyAdmin(actionSuccessMessage(method, path), 'success');
+        } else {
+            const result = await response.clone().json().catch(() => ({}));
+            notifyAdmin(result.error || 'The action could not be completed.', 'error');
+        }
+    }
 
     if (response.status === 401) {
         window.location.replace(ADMIN_LOGIN_URL);
@@ -28,6 +63,14 @@ async function responseJson(response, fallbackMessage) {
 
 function displayError(error, fallback) {
     return error instanceof Error && error.message ? error.message : fallback;
+}
+
+function describePublishError(error) {
+    const message = displayError(error, 'The server could not publish the homepage.');
+    const field = message.match(/\bcontent(?:\.[A-Za-z0-9_-]+)+(?:\[[^\]]+\])*/)?.[0];
+    return field
+        ? `Could not publish. Problem field: ${field}. ${message}`
+        : `Could not publish the homepage. ${message}`;
 }
 
 function formatFieldLabel(key) {
@@ -116,9 +159,11 @@ function useAdminDownloads(enabled = true) {
             const result = await responseJson(response, 'Could not load download requests.');
             setDownloads(Array.isArray(result.downloads) ? result.downloads : []);
             setLastUpdated(formatDateTime(new Date()));
+            if (!quiet) notifyAdmin('Download requests refreshed successfully.', 'success');
         } catch (requestError) {
             console.error('Could not load download requests:', requestError);
             setError(displayError(requestError, 'Could not load download requests. Check the server connection and retry.'));
+            if (!quiet) notifyAdmin(displayError(requestError, 'Could not refresh download requests.'), 'error');
         } finally {
             if (!quiet) setRefreshing(false);
         }
@@ -194,6 +239,8 @@ function useAdminProfileImage() {
 }
 
 function AdminFrame({ session, logout, logoutError, loggingOut, active, downloadCount, children }) {
+    const [notification, setNotification] = useState(null);
+    const dismissNotification = useCallback(() => setNotification(null), []);
     const initials = session.displayName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
     const profileImage = useAdminProfileImage();
     const links = [
@@ -211,8 +258,22 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
         profile: 'Update your administrator details and profile image shown across the admin workspace.'
     }[active];
 
+    useEffect(() => {
+        const handleNotification = (event) => setNotification(event.detail);
+        window.addEventListener(ADMIN_NOTIFICATION_EVENT, handleNotification);
+        try {
+            const notice = window.sessionStorage.getItem('kade-admin-login-notice');
+            if (notice) {
+                window.sessionStorage.removeItem('kade-admin-login-notice');
+                setNotification({ message: notice, tone: 'success' });
+            }
+        } catch { /* The admin page remains usable when storage is disabled. */ }
+        return () => window.removeEventListener(ADMIN_NOTIFICATION_EVENT, handleNotification);
+    }, []);
+
     return (
         <div className="admin-page">
+            <TimedNotification message={notification?.message} tone={notification?.tone} onClose={dismissNotification} />
             <header className="admin-topbar">
                 <div className="admin-brand-group">
                     <a className="admin-avatar-link" href="admin-profile.html" title={`${session.displayName} · ${session.email}`} aria-label="Administrator profile">
@@ -302,6 +363,8 @@ export function AdminLoginPage() {
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
     const [feedback, setFeedback] = useState('');
+    const [loginNotification, setLoginNotification] = useState(null);
+    const dismissLoginNotification = useCallback(() => setLoginNotification(null), []);
     const [submitting, setSubmitting] = useState(false);
 
     useEffect(() => {
@@ -324,13 +387,21 @@ export function AdminLoginPage() {
             })
             .catch((error) => {
                 console.error('Could not check the admin session:', error);
-                if (active) setFeedback('Could not verify the sign-in service. Check the connection and try again.');
+                if (active) {
+                    setFeedback('Could not verify the sign-in service. Check the connection and try again.');
+                    setLoginNotification({ message: 'Could not verify the sign-in service.', tone: 'error' });
+                }
             });
         return () => { active = false; };
     }, []);
 
     async function submitLogin(event) {
         event.preventDefault();
+        const checkStartedAt = Date.now();
+        const keepCheckVisible = async () => {
+            const remaining = 800 - (Date.now() - checkStartedAt);
+            if (remaining > 0) await new Promise((resolve) => window.setTimeout(resolve, remaining));
+        };
         setFeedback('');
         setSubmitting(true);
         try {
@@ -341,14 +412,19 @@ export function AdminLoginPage() {
                 body: JSON.stringify({ email, password })
             });
             const result = await response.json();
+            await keepCheckVisible();
             if (!response.ok) {
                 setFeedback(result.error || 'Could not sign in. Please try again.');
+                setLoginNotification({ message: result.error || 'Could not sign in. Please try again.', tone: 'error' });
                 return;
             }
+            try { window.sessionStorage.setItem('kade-admin-login-notice', 'You signed in successfully.'); } catch { /* Continue to the admin workspace if storage is disabled. */ }
             window.location.replace('admin.html');
         } catch (error) {
+            await keepCheckVisible();
             console.error('Admin login request failed:', error);
             setFeedback('The sign-in server did not respond. It may be waking up — try again in a few seconds.');
+            setLoginNotification({ message: 'The sign-in server did not respond. Try again in a few seconds.', tone: 'error' });
         } finally {
             setSubmitting(false);
         }
@@ -356,6 +432,7 @@ export function AdminLoginPage() {
 
     return (
         <main className="auth-page">
+            <TimedNotification message={loginNotification?.message} tone={loginNotification?.tone} onClose={dismissLoginNotification} />
             <div className="auth-layout">
                 <a className="auth-back-link" href="../index.html"><i className="fas fa-arrow-left" aria-hidden="true" /> Back to portfolio</a>
                 <section className="auth-card" aria-labelledby="login-title">
@@ -381,7 +458,7 @@ export function AdminLoginPage() {
                         </div>
                         <p className="auth-feedback" aria-live="polite">{feedback}</p>
                         <button className="auth-submit" type="submit" disabled={submitting}>
-                            <span>{submitting ? 'Signing in…' : 'Sign in to admin'}</span><i className="fas fa-arrow-right" aria-hidden="true" />
+                            <span>{submitting ? 'Checking credentials…' : 'Sign in to admin'}</span><i className={`fas ${submitting ? 'fa-spinner fa-spin' : 'fa-arrow-right'}`} aria-hidden="true" />
                         </button>
                     </form>
                     <p className="auth-footnote"><i className="fas fa-lock" aria-hidden="true" /> Secure sign-in · Administrator access only</p>
@@ -613,9 +690,30 @@ function updateNestedValue(target, path, value) {
 function HomepageFields({ content, schema, onChange }) {
     if (!content) return null;
     return Object.entries(content).map(([section, fields]) => (
+        section === 'adminName' ? (
+            <fieldset className="homepage-editor-section" key={section}>
+                <legend>Footer administrator name</legend>
+                <div className="homepage-editor-field">
+                    <label htmlFor="homepage-admin-name">Administrator name shown in the footer</label>
+                    <input
+                        id="homepage-admin-name"
+                        type="text"
+                        maxLength={120}
+                        value={fields ?? ''}
+                        onChange={(event) => {
+                            onChange(['adminName'], event.target.value);
+                            onChange(['adminNameCustom'], Boolean(event.target.value.trim()));
+                        }}
+                    />
+                    <small>Leave this blank to use the name of the most recently signed-in administrator. Enter a name to keep a custom footer name across future sign-ins.</small>
+                </div>
+            </fieldset>
+        ) : section === 'adminNameCustom' ? null : (
+        !fields || typeof fields !== 'object' || Array.isArray(fields) ? null :
         <fieldset className="homepage-editor-section" key={section}>
             <legend>{formatFieldLabel(section)}</legend>
             {Object.entries(fields).map(([key, value]) => {
+                if (section === 'footer' && key === 'adminName') return null;
                 const id = `homepage-field-${section}-${key}`;
                 const path = [section, key];
                 const fieldType = schema?.[section]?.[key];
@@ -630,12 +728,15 @@ function HomepageFields({ content, schema, onChange }) {
                                 <div className="social-links-editor">
                                     {value.map((item, index) => (
                                         <div className="social-link-row" key={index}>
-                                            <input type="text" maxLength={60} placeholder="Label (e.g. GitHub)" value={item.label ?? ''} onChange={(event) => onChange([...path, index, 'label'], event.target.value)} aria-label={`Social link ${index + 1} label`} />
-                                            <input type="url" maxLength={500} placeholder="https://…" value={item.href ?? ''} onChange={(event) => onChange([...path, index, 'href'], event.target.value)} aria-label={`Social link ${index + 1} URL`} />
+                                            <input type="text" maxLength={60} placeholder="Name (e.g. GitHub)" value={item.label ?? ''} onChange={(event) => onChange([...path, index, 'label'], event.target.value)} aria-label={`Social link ${index + 1} name`} />
+                                            <input type="text" maxLength={80} placeholder="Icon (e.g. fab fa-github)" value={item.icon ?? ''} onChange={(event) => onChange([...path, index, 'icon'], event.target.value)} aria-label={`Social link ${index + 1} icon class`} />
+                                            <input type="text" maxLength={500} placeholder="URL (https://…)" value={item.href ?? ''} onChange={(event) => onChange([...path, index, 'href'], event.target.value)} aria-label={`Social link ${index + 1} URL`} />
+                                            <button className="admin-button quiet" type="button" onClick={() => onChange(path, value.filter((_, itemIndex) => itemIndex !== index))} aria-label={`Remove ${item.label || `social link ${index + 1}`}`}>Remove</button>
                                         </div>
                                     ))}
                                 </div>
-                                <small>Enter each social media address as a full URL, such as https://github.com/your-name.</small>
+                                <button className="admin-button quiet" type="button" disabled={value.length >= 30} onClick={() => onChange(path, [...value, { label: '', icon: '', href: '' }])}>Add social link</button>
+                                <small>Enter a name, a Font Awesome icon class (for example <code>fab fa-github</code>, <code>fab fa-linkedin</code>, or <code>fab fa-whatsapp</code>), and the full profile URL. You can leave a field blank or remove a link.</small>
                             </div>
                         );
                     }
@@ -645,6 +746,7 @@ function HomepageFields({ content, schema, onChange }) {
                 return <div className="homepage-editor-field" key={key}><label htmlFor={id}>{formatFieldLabel(key)}</label><textarea id={id} rows={typeof value === 'string' && value.length > 120 ? 4 : 2} maxLength={2000} value={value ?? ''} onChange={(event) => onChange(path, event.target.value)} /></div>;
             })}
         </fieldset>
+        )
     ));
 }
 
@@ -672,6 +774,8 @@ function HomepageContent() {
     const [loadingError, setLoadingError] = useState('');
     const [feedback, setFeedback] = useState({ message: '', error: false });
     const [saving, setSaving] = useState(false);
+    const [reviewing, setReviewing] = useState(false);
+    const [reviewDraft, setReviewDraft] = useState(null);
     const [resetting, setResetting] = useState(false);
     const [profileFile, setProfileFile] = useState(null);
     const [profileInputVersion, setProfileInputVersion] = useState(0);
@@ -691,7 +795,13 @@ function HomepageContent() {
                     setOriginalContent(result.content);
                 }
             })
-            .catch((error) => { if (active) setLoadingError(displayError(error, 'Could not load homepage content.')); });
+            .catch((error) => {
+                if (active) {
+                    const message = displayError(error, 'Could not load homepage content.');
+                    setLoadingError(message);
+                    notifyAdmin(message, 'error');
+                }
+            });
         return () => { active = false; };
     }, []);
 
@@ -707,31 +817,91 @@ function HomepageContent() {
 
     function handleFieldChange(path, value) {
         setContent((current) => updateNestedValue(current, path, value));
+        setFeedback({ message: '', error: false });
     }
 
-    async function saveHomepage(event) {
+    function prepareHomepageContent() {
+            const contentToSave = structuredClone(content);
+            for (const [section, schemaFields] of Object.entries(originalContent)) {
+                if (!schemaFields || typeof schemaFields !== 'object' || Array.isArray(schemaFields)) continue;
+                for (const [key, schemaValue] of Object.entries(schemaFields)) {
+                    const draftValue = contentToSave[section]?.[key];
+                    if (Array.isArray(schemaValue) && typeof draftValue === 'string') {
+                        contentToSave[section][key] = draftValue.trim() ? JSON.parse(draftValue) : [];
+                    }
+                }
+            }
+            contentToSave.adminName = typeof content.adminName === 'string' ? content.adminName.trim() : '';
+            contentToSave.adminNameCustom = Boolean(contentToSave.adminName) && content.adminNameCustom === true;
+            return contentToSave;
+    }
+
+    function saveHomepage(event) {
         event.preventDefault();
+        try {
+            const draft = prepareHomepageContent();
+            localStorage.setItem('kade-homepage-review-draft', JSON.stringify(draft));
+            setReviewDraft(draft);
+            setReviewing(true);
+            setFeedback({ message: '', error: false });
+            notifyAdmin('Homepage preview is ready for review.', 'success');
+        } catch (error) {
+            const message = error instanceof SyntaxError ? 'A list contains invalid JSON. Correct it and try again.' : displayError(error, 'Could not prepare the homepage preview.');
+            setFeedback({ message, error: true });
+            notifyAdmin(message, 'error');
+        }
+    }
+
+    async function publishHomepage() {
         setSaving(true);
         setFeedback({ message: '', error: false });
         try {
-            const contentToSave = structuredClone(originalContent);
-            for (const [section, fields] of Object.entries(contentToSave)) {
-                for (const [key, value] of Object.entries(fields)) {
-                    const draftValue = content[section][key];
-                    contentToSave[section][key] = Array.isArray(value) && typeof draftValue === 'string' ? JSON.parse(draftValue) : draftValue;
+            const contentToSave = reviewDraft || JSON.parse(localStorage.getItem('kade-homepage-review-draft') || 'null');
+            if (!contentToSave) throw new Error('Save and review the homepage before publishing.');
+            let response = await apiRequest('/homepage', { method: 'PUT', body: JSON.stringify({ content: contentToSave }), silentNotification: true });
+            let legacyApi = false;
+            let normalizedSiteSettings = false;
+            if (!response.ok) {
+                const errorResult = await response.clone().json().catch(() => ({}));
+                const schemaMismatch = /missing or unexpected fields/i.test(errorResult.error || '');
+                if (schemaMismatch) {
+                    const compatibleContent = structuredClone(contentToSave);
+                    delete compatibleContent.adminNameCustom;
+                    if (/content\.site\b/i.test(errorResult.error || '')) {
+                        const site = compatibleContent.site || {};
+                        const expectedSite = {
+                            title: typeof site.title === 'string' ? site.title : '',
+                            description: typeof site.description === 'string' ? site.description : ''
+                        };
+                        normalizedSiteSettings = JSON.stringify(site) !== JSON.stringify(expectedSite);
+                        compatibleContent.site = expectedSite;
+                    }
+                    response = await apiRequest('/homepage', {
+                        method: 'PUT',
+                        body: JSON.stringify({ content: compatibleContent }),
+                        silentNotification: true
+                    });
+                    legacyApi = true;
                 }
             }
-            const response = await apiRequest('/homepage', { method: 'PUT', body: JSON.stringify({ content: contentToSave }) });
             const result = await responseJson(response, 'Could not save homepage content.');
             setContent(result.content);
             setOriginalContent(result.content);
-            setFeedback({ message: 'Homepage changes are now live for all visitors.', error: false });
+            localStorage.removeItem('kade-homepage-review-draft');
+            setReviewDraft(null);
+            setReviewing(false);
+            const successMessage = normalizedSiteSettings
+                    ? 'Homepage changes were published successfully. The server accepted Site title (content.site.title) and Site description (content.site.description) after removing unsupported fields from content.site.'
+                    : legacyApi && contentToSave.adminNameCustom
+                        ? 'Homepage changes are live. Update the backend to preserve the custom footer name across sign-ins.'
+                        : 'Homepage changes were published successfully and are now visible to visitors.';
+            setFeedback({ message: '', error: false });
+            notifyAdmin(successMessage, 'success');
         } catch (error) {
             console.error('Homepage content update failed:', error);
-            setFeedback({
-                message: error instanceof SyntaxError ? 'A list contains invalid JSON. Correct it and try again.' : displayError(error, 'Could not save homepage content.'),
-                error: true
-            });
+            const message = error instanceof SyntaxError ? 'Could not publish. Problem field: a list contains invalid JSON. Correct the list and try again.' : describePublishError(error);
+            setFeedback({ message: '', error: false });
+            notifyAdmin(message, 'error');
         } finally {
             setSaving(false);
         }
@@ -759,6 +929,7 @@ function HomepageContent() {
         event.preventDefault();
         if (!profileFile) {
             setProfileFeedback({ message: 'Choose a profile image first.', error: true });
+            notifyAdmin('Choose a profile image first.', 'error');
             return;
         }
         setUploadingProfile(true);
@@ -786,6 +957,7 @@ function HomepageContent() {
         const url = profileUrl.trim();
         if (!url) {
             setProfileFeedback({ message: 'Paste an image URL first.', error: true });
+            notifyAdmin('Paste an image URL first.', 'error');
             return;
         }
         setSavingProfileUrl(true);
@@ -824,7 +996,7 @@ function HomepageContent() {
                     <section className="admin-heading"><div><p className="admin-eyebrow">PUBLIC CONTENT</p><h1>Landing page</h1><p className="admin-subheading">Manage the text, links, images, cards, and visibility of every landing-page section.</p></div><div className="admin-date"><i className="far fa-calendar" aria-hidden="true" /> <span>{today}</span></div></section>
                     <section id="homepage" className="admin-panel admin-page-panel">
                         <div className="panel-heading"><div><p className="admin-eyebrow">LANDING PAGE CONTENT</p><h2>Edit published content</h2></div><span className="section-icon"><i className="fas fa-pen" aria-hidden="true" /></span></div>
-                        <p className="panel-description">Changes are shared with all visitors. Update each section below; lists such as navigation, cards, and footer links are edited as JSON. Use safe web addresses or relative page paths for links.</p>
+                        <p className="panel-description">Save your edits to review the complete landing page. Visitors will see the changes after you publish them.</p>
                         <div className="profile-image-upload">
                             <div className="profile-image-preview">{(profilePreview || publishedProfileImage) && <img src={profilePreview || publishedProfileImage} alt="Current profile image" />}</div>
                             <div><h3>Profile image</h3><p className="panel-description">Choose a JPG, PNG, or WebP image from your device. Maximum 5 MB.</p>
@@ -837,10 +1009,12 @@ function HomepageContent() {
                                             setProfileFile(null);
                                             setProfileInputVersion((version) => version + 1);
                                             setProfileFeedback({ message: 'Choose a JPG, PNG, or WebP image no larger than 5 MB.', error: true });
+                                            notifyAdmin('Choose a JPG, PNG, or WebP image no larger than 5 MB.', 'error');
                                             return;
                                         }
                                         setProfileFile(file);
                                         setProfileFeedback({ message: `${file.name} is ready to publish.`, error: false });
+                                        notifyAdmin(`${file.name} selected successfully. Publish the image to make it live.`, 'success');
                                     }} />
                                     <button className="admin-button primary" type="submit" disabled={uploadingProfile}><i className="fas fa-upload" aria-hidden="true" /> Publish image</button>
                                 </form>
@@ -852,12 +1026,17 @@ function HomepageContent() {
                             </div>
                         </div>
                         {loadingError && <p className="form-feedback error" role="status">{loadingError}</p>}
-                        <form className="admin-form" onSubmit={saveHomepage}>
+                        {feedback.message && !reviewing && <p className={`homepage-publish-toast${feedback.error ? ' error' : ''}`} role="status" aria-live="polite"><i className={`fas ${feedback.error ? 'fa-circle-exclamation' : 'fa-circle-check'}`} aria-hidden="true" /> {feedback.message}</p>}
+                        <form className="admin-form" noValidate onSubmit={saveHomepage}>
                             <div className="homepage-editor-fields"><HomepageFields content={content} schema={originalContent} onChange={handleFieldChange} /></div>
-                            <div className="form-actions"><button className="admin-button primary" type="submit" disabled={!content || saving}><i className="fas fa-check" aria-hidden="true" /> Publish changes</button><button className="admin-button quiet" id="reset-homepage" type="button" disabled={resetting} onClick={resetHomepage}>Restore defaults</button><a className="admin-button quiet" href="../index.html" target="_blank" rel="noopener">Preview landing page</a></div>
+                            <div className="form-actions"><button className="admin-button primary" type="submit" disabled={!content || saving}><i className="fas fa-eye" aria-hidden="true" /> Save &amp; review</button><button className="admin-button quiet" id="reset-homepage" type="button" disabled={resetting} onClick={resetHomepage}>Restore defaults</button></div>
                             <p className={`form-feedback${feedback.error ? ' error' : ''}`} aria-live="polite">{feedback.message}</p>
                         </form>
                     </section>
+                    {reviewing && <div className="homepage-review-overlay" role="dialog" aria-modal="true" aria-label="Review landing page">
+                        <div className="homepage-review-toolbar"><div><strong>Review the complete landing page</strong><span>Empty fields are allowed. Changes go live only when you publish.</span>{feedback.message && <span className={feedback.error ? 'homepage-review-error' : ''} role="status" aria-live="polite">{feedback.message}</span>}</div><div className="form-actions"><button className="admin-button quiet" type="button" onClick={() => setReviewing(false)}>Back to editing</button><button className="admin-button primary" type="button" disabled={saving} onClick={publishHomepage}><i className="fas fa-check" aria-hidden="true" /> {saving ? 'Publishing…' : 'Publish to homepage'}</button></div></div>
+                        <iframe title="Homepage review" src="../index.html?homepagePreview=1" className="homepage-review-frame" />
+                    </div>}
             </>
     );
 }
@@ -913,6 +1092,7 @@ function ProfileContent() {
         event.preventDefault();
         if (!profileFile) {
             setProfileFeedback({ message: 'Choose a profile image first.', error: true });
+            notifyAdmin('Choose a profile image first.', 'error');
             return;
         }
         setUploadingProfile(true);
@@ -940,6 +1120,7 @@ function ProfileContent() {
         const url = profileUrl.trim();
         if (!url) {
             setProfileFeedback({ message: 'Paste an image URL first.', error: true });
+            notifyAdmin('Paste an image URL first.', 'error');
             return;
         }
         setSavingProfileUrl(true);
@@ -995,6 +1176,7 @@ function ProfileContent() {
                                     setProfileFile(null);
                                     setProfileInputVersion((version) => version + 1);
                                     setProfileFeedback({ message: 'Choose a JPG, PNG, or WebP image no larger than 5 MB.', error: true });
+                                    notifyAdmin('Choose a JPG, PNG, or WebP image no larger than 5 MB.', 'error');
                                     return;
                                 }
                                 setProfileFile(file);
@@ -1115,12 +1297,14 @@ function DocumentsContent() {
         event.preventDefault();
         if (!cvFile) {
             setCvFeedback({ message: 'Choose a PDF file to update the CV.', error: true });
+            notifyAdmin('Choose a PDF file to update the CV.', 'error');
             return;
         }
         if ((cvFile.type !== 'application/pdf' && !cvFile.name.toLowerCase().endsWith('.pdf')) || cvFile.size > 10 * 1024 * 1024) {
             setCvFile(null);
             setCvInputVersion((version) => version + 1);
             setCvFeedback({ message: 'Choose a PDF file no larger than 10 MB to update the CV.', error: true });
+            notifyAdmin('Choose a PDF file no larger than 10 MB to update the CV.', 'error');
             return;
         }
         setSavingCv(true);
@@ -1193,12 +1377,14 @@ function DocumentsContent() {
         event.preventDefault();
         if (!editing && !certificateFile) {
             setCertificateFeedback({ message: 'Choose a PDF file for this certificate.', error: true });
+            notifyAdmin('Choose a PDF file for this certificate.', 'error');
             return;
         }
         if (certificateFile && ((certificateFile.type !== 'application/pdf' && !certificateFile.name.toLowerCase().endsWith('.pdf')) || certificateFile.size > 10 * 1024 * 1024)) {
             setCertificateFile(null);
             setCertificateInputVersion((version) => version + 1);
             setCertificateFeedback({ message: 'Choose a PDF file no larger than 10 MB for this certificate.', error: true });
+            notifyAdmin('Choose a PDF file no larger than 10 MB for this certificate.', 'error');
             return;
         }
         setSavingCertificate(true);

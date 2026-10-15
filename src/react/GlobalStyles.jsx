@@ -1102,6 +1102,73 @@ html.dark-theme #others::before {
   box-shadow: 0 4px 12px rgba(29, 78, 216, 0.25);
 }
 
+.viewer-notification {
+  position: fixed;
+  z-index: 20000;
+  top: 20px;
+  right: 20px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: min(440px, calc(100vw - 40px));
+  padding: 14px 14px 14px 17px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: 12px;
+  color: var(--text);
+  background: var(--panel);
+  box-shadow: 0 16px 38px rgba(0, 0, 0, 0.28);
+  font-size: 0.9rem;
+  font-weight: 700;
+  animation: viewer-notification-in 180ms ease-out;
+}
+
+.viewer-notification > i { color: var(--accent); }
+.viewer-notification > span { flex: 1; }
+
+.viewer-notification.success {
+  border-color: rgba(34, 197, 94, 0.58);
+  border-left-color: #22c55e;
+  color: #ecfdf3;
+  background: #14532d;
+}
+
+.viewer-notification.success > i { color: #86efac; }
+
+.viewer-notification.error {
+  border-color: rgba(248, 113, 113, 0.62);
+  border-left-color: #ef4444;
+  color: #fff1f2;
+  background: #7f1d1d;
+}
+
+.viewer-notification.error > i { color: #fca5a5; }
+
+.viewer-notification-close {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: 0 0 auto;
+  place-items: center;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.42);
+  border-radius: 8px;
+  color: #ffffff;
+  background: rgba(255, 255, 255, 0.12);
+  font: inherit;
+  font-size: 1.35rem;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.viewer-notification-close:hover { color: #ffffff; background: rgba(255, 255, 255, 0.25); }
+
+@keyframes viewer-notification-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
 /* =========================================================
    5. SITE FOOTER
    ========================================================= */
@@ -2325,7 +2392,7 @@ footer:not(.admin-footer) .footer-built a {
 
 .social-link-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) minmax(0, 2fr) auto;
   gap: 8px;
 }
 
@@ -2343,6 +2410,16 @@ footer:not(.admin-footer) .footer-built a {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--accent-soft);
+}
+
+@media (max-width: 620px) {
+  .social-link-row {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .social-link-row input:nth-child(3) {
+    grid-column: 1 / -1;
+  }
 }
 
 .profile-image-url-form {
@@ -3089,6 +3166,73 @@ html.dark-theme .admin-button.danger:hover {
   width: 18px;
   height: 18px;
   accent-color: var(--accent);
+}
+
+.homepage-review-overlay {
+  position: fixed;
+  z-index: 10000;
+  inset: 0;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  background: var(--bg, #070d1c);
+}
+
+.homepage-review-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel, #101b38);
+}
+
+.homepage-review-toolbar > div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.homepage-review-toolbar strong { color: var(--text); }
+.homepage-review-toolbar span { color: var(--faint); font-size: 0.8rem; }
+.homepage-review-toolbar .homepage-review-error { color: #ff8c8c; }
+.homepage-review-toolbar .form-actions { margin: 0; }
+
+.homepage-review-frame {
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: #070d1c;
+}
+
+.homepage-publish-toast {
+  position: fixed;
+  z-index: 10001;
+  right: 24px;
+  bottom: 24px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: min(520px, calc(100vw - 32px));
+  margin: 0;
+  padding: 16px 20px;
+  border: 1px solid rgba(34, 197, 94, 0.5);
+  border-radius: 12px;
+  color: #e9fff0;
+  background: #14532d;
+  box-shadow: 0 14px 35px rgba(0, 0, 0, 0.32);
+  font-weight: 700;
+}
+
+.homepage-publish-toast.error {
+  border-color: rgba(248, 113, 113, 0.55);
+  color: #fff0f0;
+  background: #7f1d1d;
+}
+
+@media (max-width: 700px) {
+  .homepage-review-toolbar { align-items: flex-start; flex-direction: column; }
+  .homepage-review-toolbar .form-actions { width: 100%; flex-wrap: wrap; }
+  .homepage-review-toolbar .admin-button { flex: 1; }
 }
 
 .current-file-card {

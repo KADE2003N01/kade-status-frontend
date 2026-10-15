@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch } from './api.js';
+import TimedNotification from './TimedNotification.jsx';
 import backgroundImageUrl from '../media/background image.jpeg';
 
 const NAV_ITEMS = [
@@ -27,6 +28,47 @@ function safeUrl(value, allowContactSchemes = false) {
 function safeAssetUrl(value) {
   const url = safeUrl(value);
   return url && !new URL(url).pathname.includes('/media/') ? url : null;
+}
+
+function usePublishedUpdateNotice(enabled = true) {
+  const [message, setMessage] = useState('');
+  const dismiss = useCallback(() => setMessage(''), []);
+
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let active = true;
+    let lastObserved = null;
+    const storageKey = 'kade-last-seen-public-update';
+    const checkForUpdate = async () => {
+      try {
+        const response = await apiFetch('/homepage');
+        const result = await response.json();
+        if (!response.ok || !result.updatedAt || !active) return;
+        const updatedAt = String(result.updatedAt);
+        let previouslySeen = '';
+        try { previouslySeen = window.localStorage.getItem(storageKey) || ''; } catch { /* Storage may be disabled. */ }
+        const isRecent = Date.now() - new Date(updatedAt).getTime() <= 10_000;
+        if ((lastObserved !== null && lastObserved !== updatedAt) || (lastObserved === null && previouslySeen && previouslySeen !== updatedAt) || (lastObserved === null && !previouslySeen && isRecent)) {
+          setMessage('The portfolio has new published changes.');
+        }
+        lastObserved = updatedAt;
+        try { window.localStorage.setItem(storageKey, updatedAt); } catch { /* Notification still works for this page. */ }
+      } catch (error) {
+        console.error('Could not check for published portfolio changes:', error);
+      }
+    };
+
+    checkForUpdate();
+    const intervalId = window.setInterval(() => {
+      if (!document.hidden) checkForUpdate();
+    }, 5_000);
+    return () => {
+      active = false;
+      window.clearInterval(intervalId);
+    };
+  }, [enabled]);
+
+  return [message, dismiss];
 }
 
 function useProfileImage(homepage = false) {
@@ -100,7 +142,10 @@ function Navigation({ homepage = false, homepageContent }) {
   const navLinks = items.map(({ label, href }) => {
     let active = false;
     try {
-      active = new URL(href, window.location.href).pathname.split('/').pop() === currentFilename;
+      const destination = new URL(href, window.location.href);
+      const destinationPath = destination.pathname.endsWith('/') ? `${destination.pathname}index.html` : destination.pathname;
+      const currentPath = window.location.pathname.endsWith('/') ? `${window.location.pathname}index.html` : window.location.pathname;
+      active = destination.origin === window.location.origin && destinationPath === currentPath;
     } catch {
       active = false;
     }
@@ -108,7 +153,7 @@ function Navigation({ homepage = false, homepageContent }) {
     const isOffSite = /^https?:\/\//i.test(link) && !link.includes(window.location.host);
     return (
       <li key={`${label}:${href}`}>
-        <a className={active ? 'active' : undefined} href={link} target={isOffSite ? '_blank' : undefined} rel={isOffSite ? 'noopener noreferrer' : undefined} onClick={closeMenu}>
+        <a className={active ? 'active' : undefined} aria-current={active ? 'page' : undefined} href={link} target={isOffSite ? '_blank' : undefined} rel={isOffSite ? 'noopener noreferrer' : undefined} onClick={closeMenu}>
           {label}
         </a>
       </li>
@@ -149,23 +194,25 @@ function Navigation({ homepage = false, homepageContent }) {
   );
 }
 
-// The name of the admin who signed in last, published by the server and shown
-// in the footer on every public page (not just the homepage).
-function useAdminName() {
-  const [adminName, setAdminName] = useState('');
+function usePublicFooter() {
+  const [footerContent, setFooterContent] = useState({ footer: null, adminName: '' });
   useEffect(() => {
     let active = true;
     apiFetch('/homepage')
       .then(async (response) => {
         const result = await response.json();
-        if (active && typeof result.content?.adminName === 'string' && result.content.adminName.trim()) {
-          setAdminName(result.content.adminName.trim());
+        if (!response.ok) throw new Error(result.error || 'Could not load published footer content.');
+        if (active && result.content) {
+          setFooterContent({
+            footer: result.content.footer || null,
+            adminName: typeof result.content.adminName === 'string' ? result.content.adminName.trim() : ''
+          });
         }
       })
-      .catch(() => { /* Fall back to the built-in name when the API is unreachable. */ });
+      .catch((error) => console.error('Could not load published footer content:', error));
     return () => { active = false; };
   }, []);
-  return adminName;
+  return footerContent;
 }
 
 function Footer({ homepage = false, content, adminName: publishedAdminName }) {
@@ -188,16 +235,11 @@ function Footer({ homepage = false, content, adminName: publishedAdminName }) {
       ['Consulting', homepage ? '/src/background.html' : 'background.html'],
       ['Contact', homepage ? '/src/contact.html' : 'contact.html']
     ],
-    socialLinks: homepage ? [
+    socialLinks: [
       ['GitHub', 'https://github.com/KADE2003N01/kade-status', 'fab fa-github'],
       ['LinkedIn', 'https://www.linkedin.com/feed/', 'fab fa-linkedin'],
       ['WhatsApp', 'https://wa.me/+250788950833', 'fab fa-whatsapp'],
       ['Facebook', 'https://facebook.com/', 'fab fa-facebook']
-    ] : [
-      ['GitHub', 'https://github.com/KADE2003N01/kade-status', 'fab fa-github'],
-      ['LinkedIn', 'https://linkedin.com/in/david-kwizera', 'fab fa-linkedin'],
-      ['WhatsApp', 'https://wa.me/+250788950833', 'fab fa-whatsapp'],
-      ['Twitter', 'https://twitter.com/kadekwizera', 'fab fa-twitter']
     ],
     email: 'kadecomputerscience@gmail.com',
     phone: '+250 788 950 833',
@@ -210,11 +252,25 @@ function Footer({ homepage = false, content, adminName: publishedAdminName }) {
   const value = content ? {
     ...defaults,
     ...content,
-    quickLinks: content.quickLinks.map((item) => [item.label, item.href]),
-    services: content.services.map((item) => [item.label, item.href]),
-    socialLinks: content.socialLinks.map((item) => [item.label, item.href, item.icon])
+    quickLinks: Array.isArray(content.quickLinks) ? content.quickLinks
+      .filter((item) => item && typeof item.label === 'string' && item.label.trim() && typeof item.href === 'string' && item.href.trim())
+      .map((item) => [item.label, item.href]) : defaults.quickLinks,
+    services: Array.isArray(content.services) ? content.services
+      .filter((item) => item && typeof item.label === 'string' && item.label.trim() && typeof item.href === 'string' && item.href.trim())
+      .map((item) => [item.label, item.href]) : defaults.services,
+    socialLinks: Array.isArray(content.socialLinks) ? content.socialLinks
+      .filter((item) => item && typeof item.label === 'string' && item.label.trim() && typeof item.href === 'string' && item.href.trim())
+      .map((item) => [item.label, item.href, item.icon]) : defaults.socialLinks
   } : defaults;
-  const dynamicLink = (href) => safeUrl(href, true) || '#';
+  const dynamicLink = (href) => {
+    if (typeof href !== 'string' || !safeUrl(href, true)) return '#';
+    const target = href.trim();
+    if (/^(?:[a-z]+:|\/|#)/i.test(target)) return target;
+    if (!homepage) {
+      return target.startsWith('src/') ? target.slice(4) : `../${target}`;
+    }
+    return target;
+  };
   const adminName = (typeof content?.adminName === 'string' && content.adminName.trim())
     || (typeof publishedAdminName === 'string' && publishedAdminName.trim() ? publishedAdminName.trim() : '')
     || 'David KWIZERA';
@@ -222,10 +278,10 @@ function Footer({ homepage = false, content, adminName: publishedAdminName }) {
   const copyright = `© ${new Date().getFullYear()} ${adminName}. All rights reserved.`;
   const footerEmail = typeof content?.email === 'string' && content.email.includes('@') ? content.email.trim() : 'kadecomputerscience@gmail.com';
   return (
-    <footer data-home-section={homepage ? 'footer' : undefined} hidden={homepage && content?.visible === false}>
+    <footer data-home-section={homepage ? 'footer' : undefined} hidden={value.visible === false}>
       <div className="footer-container">
         <div className="footer-section footer-brand">
-          <div className="footer-logo">{adminName.split(/\s+/)[0]}</div>
+          <div className="footer-logo">{value.brandName || adminName.split(/\s+/)[0]}</div>
           <p className="footer-tagline">{value.tagline}</p>
           <p className="footer-description">{value.description}</p>
         </div>
@@ -240,7 +296,7 @@ function Footer({ homepage = false, content, adminName: publishedAdminName }) {
         <div className="footer-section">
           <h4 className="footer-section-title">{value.socialTitle}</h4>
           <div className="footer-social">{value.socialLinks.map(([label, href, icon]) => (
-            <a key={label} href={dynamicLink(href)} target="_blank" rel="noopener noreferrer" title={label} aria-label={homepage ? label : undefined}>
+            <a key={label} href={dynamicLink(href)} target="_blank" rel="noopener noreferrer" title={label} aria-label={label}>
               <i className={/^[a-z0-9-]+(?:\s+[a-z0-9-]+)*$/i.test(icon || '') ? icon : 'fas fa-circle'} aria-hidden="true"></i>
             </a>
           ))}</div>
@@ -282,13 +338,15 @@ function Hero({ id, title, subtitle, intro, homepage = false, videoUrl }) {
 }
 
 function InnerPage({ title, subtitle, intro, id, children }) {
-  const adminName = useAdminName();
+  const { footer, adminName } = usePublicFooter();
+  const [notice, dismissNotice] = usePublishedUpdateNotice();
   return (
     <>
+      <TimedNotification message={notice} tone="success" onClose={dismissNotice} />
       <Navigation />
       <Hero id={id} title={{ text: title }} subtitle={subtitle} intro={intro} />
       {children}
-      <Footer adminName={adminName} />
+      <Footer content={footer} adminName={adminName} />
     </>
   );
 }
@@ -356,7 +414,18 @@ const homepageFallback = {
 
 function Homepage() {
   const [content, setContent] = useState(homepageFallback);
+  const isReviewPreview = new URLSearchParams(window.location.search).has('homepagePreview');
+  const [notice, dismissNotice] = usePublishedUpdateNotice(!isReviewPreview);
   useEffect(() => {
+    if (isReviewPreview) {
+      try {
+        const draft = localStorage.getItem('kade-homepage-review-draft');
+        if (draft) setContent(JSON.parse(draft));
+      } catch (error) {
+        console.error('Could not load homepage review draft:', error);
+      }
+      return undefined;
+    }
     let active = true;
     apiFetch('/homepage')
       .then(async (response) => {
@@ -366,7 +435,7 @@ function Homepage() {
       })
       .catch((error) => console.error('Could not load published landing-page content:', error));
     return () => { active = false; };
-  }, []);
+  }, [isReviewPreview]);
   const c = { ...homepageFallback, ...content };
   useEffect(() => {
     if (c.site?.title) document.title = c.site.title;
@@ -385,6 +454,7 @@ function Homepage() {
   const linkUrl = (href) => safeUrl(href, true) || '#';
   return (
     <>
+      <TimedNotification message={notice} tone="success" onClose={dismissNotice} />
       <Navigation homepage homepageContent={brand} />
       <section id="home" data-home-section="hero" hidden={!hero.visible} style={{ backgroundImage: `url("${heroBackground}")` }}>
         {videoUrl && <video className="home-video" autoPlay muted loop playsInline><source src={videoUrl} type="video/mp4" /></video>}
