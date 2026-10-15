@@ -19,6 +19,13 @@ export const API_BASE_URL = API_BASE_URLS[0];
 export async function apiFetch(path, options) {
   let lastNetworkError;
 
+  // The admin session cookie is tied to the exact host it was set against.
+  // Always use the first (preferred) base URL for auth endpoints so the login
+  // request and the session check that follows it hit the same server.
+  if (path.startsWith('/auth/')) {
+    return fetch(`${API_BASE_URL}${path}`, options);
+  }
+
   for (const baseUrl of API_BASE_URLS) {
     try {
       return await fetch(`${baseUrl}${path}`, options);
