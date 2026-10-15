@@ -6,7 +6,7 @@ const localApiUrl = `http://${localApiHost}:5000/api`;
 const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
 const defaultApiUrls = isLocalHost
   ? [localApiUrl, liveApiUrl]
-  : ['/api'];
+  : ['/api', liveApiUrl];
 
 export const API_BASE_URLS = [...new Set([
   configuredApiUrl,
@@ -17,23 +17,26 @@ export const API_BASE_URLS = [...new Set([
 export const API_BASE_URL = API_BASE_URLS[0];
 
 export async function apiFetch(path, options) {
-  let lastNetworkError;
-
-  // The admin session cookie is tied to the exact host it was set against.
-  // Always use the first (preferred) base URL for auth endpoints so the login
-  // request and the session check that follows it hit the same server.
-  if (path.startsWith('/auth/')) {
-    return fetch(`${API_BASE_URL}${path}`, options);
-  }
+  let lastError;
 
   for (const baseUrl of API_BASE_URLS) {
     try {
-      return await fetch(`${baseUrl}${path}`, options);
+      const response = await fetch(`${baseUrl}${path}`, options);
+      const contentType = response.headers.get('content-type') || '';
+
+      // A Render static site without its /api rewrite can return the frontend
+      // HTML shell with status 200. Treat that as a proxy miss and try the
+      // backend URL; keep normal JSON auth errors (including 401) authoritative.
+      if (!contentType.toLowerCase().includes('application/json')) {
+        lastError = new Error(`The API route at ${baseUrl} returned a non-JSON response.`);
+        continue;
+      }
+      return response;
     } catch (error) {
       if (!(error instanceof TypeError) || options?.signal?.aborted) throw error;
-      lastNetworkError = error;
+      lastError = error;
     }
   }
 
-  throw lastNetworkError;
+  throw lastError || new Error('The API did not return a JSON response.');
 }
