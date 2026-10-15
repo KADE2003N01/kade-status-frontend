@@ -418,6 +418,20 @@ export function AdminLoginPage() {
                 setLoginNotification({ message: result.error || 'Could not sign in. Please try again.', tone: 'error' });
                 return;
             }
+
+            // Confirm the browser saved and sends the new HTTP-only session
+            // cookie before navigating to a page that requires that session.
+            const sessionResponse = await apiFetch('/auth/me', { credentials: 'include' });
+            const sessionResult = await sessionResponse.json();
+            const signedInEmail = result.user?.email?.trim().toLowerCase();
+            const verifiedEmail = sessionResult.user?.email?.trim().toLowerCase();
+            if (!sessionResponse.ok || !sessionResult.success || !signedInEmail || verifiedEmail !== signedInEmail) {
+                const message = 'Your credentials were accepted, but this browser could not verify the admin session. Allow cookies for this site and try again.';
+                setFeedback(message);
+                setLoginNotification({ message, tone: 'error' });
+                return;
+            }
+
             try { window.sessionStorage.setItem('kade-admin-login-notice', 'You signed in successfully.'); } catch { /* Continue to the admin workspace if storage is disabled. */ }
             window.location.replace('admin.html');
         } catch (error) {
