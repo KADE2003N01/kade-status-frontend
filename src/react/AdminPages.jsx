@@ -221,7 +221,7 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
                             : <span className="admin-account-avatar admin-avatar-topbar" aria-hidden="true">{initials}</span>}
                     </a>
                     <a className="admin-brand" href="../index.html">
-                        <span>Kade<span className="admin-brand-sub"> / <span>{session.displayName}</span></span></span>
+                        <span>{session.displayName}<span className="admin-brand-sub"> / Portfolio</span></span>
                     </a>
                 </div>
                 <div className="admin-topbar-actions">
@@ -257,7 +257,7 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
                 </aside>
                 <div className="admin-content">
                     {children}
-                    <footer className="admin-footer"><span>KADE PORTFOLIO</span><span>Protected portfolio administration</span></footer>
+                    <footer className="admin-footer"><span>{session.displayName} · Portfolio</span><span>Protected portfolio administration</span></footer>
                 </div>
             </main>
         </div>
@@ -283,6 +283,21 @@ function AdminPage({ active, children }) {
 }
 
 export function AdminLoginPage() {
+    // The name of the admin who signed in last, fetched so the login-page
+    // footer can show the same name as the public site footer.
+    const [loginAdminName, setLoginAdminName] = useState('David KWIZERA');
+    useEffect(() => {
+        let active = true;
+        apiFetch('/homepage')
+            .then(async (response) => {
+                const result = await response.json();
+                if (active && typeof result.content?.adminName === 'string' && result.content.adminName.trim()) {
+                    setLoginAdminName(result.content.adminName.trim());
+                }
+            })
+            .catch(() => { /* Keep the default name when the API is unreachable. */ });
+        return () => { active = false; };
+    }, []);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [showPassword, setShowPassword] = useState(false);
@@ -293,6 +308,8 @@ export function AdminLoginPage() {
         if (new URLSearchParams(window.location.search).get('session') === 'unavailable') {
             setFeedback('Could not verify your previous session. Sign in again to continue.');
         }
+        // Warm up a sleeping server (e.g. Render free tier) while the page opens.
+        apiFetch('/health', { credentials: 'include' }).catch(() => {});
         let active = true;
         apiFetch('/auth/me', { credentials: 'include' })
             .then(async (response) => {
@@ -331,7 +348,7 @@ export function AdminLoginPage() {
             window.location.replace('admin.html');
         } catch (error) {
             console.error('Admin login request failed:', error);
-            setFeedback('Could not reach the sign-in service. Check the connection and try again.');
+            setFeedback('The sign-in server did not respond. It may be waking up — try again in a few seconds.');
         } finally {
             setSubmitting(false);
         }
@@ -369,7 +386,10 @@ export function AdminLoginPage() {
                     </form>
                     <p className="auth-footnote"><i className="fas fa-lock" aria-hidden="true" /> Secure sign-in · Administrator access only</p>
                 </section>
-                <p className="auth-footer">© 2026 · KADE PORTFOLIO</p>
+                <footer className="auth-footer">
+                    <p>© {new Date().getFullYear()} {loginAdminName} · All rights reserved.</p>
+                    <p>Powered by KadeTech | <a href="tel:+250788950833">Contact</a> | <a href="https://mail.google.com/mail/?view=cm&fs=1&to=kadecomputerscience@gmail.com" target="_blank" rel="noopener noreferrer">Email</a></p>
+                </footer>
             </div>
         </main>
     );
@@ -467,7 +487,7 @@ function OverviewContent({ today, cv, cvUpdated, documentsError, documents = [],
     return (
         <>
             <section id="overview" className="admin-heading">
-                <div><p className="admin-eyebrow">PORTFOLIO CONTROL CENTER</p><h1>Good to see you, <span>{session?.displayName}</span> <span>✦</span></h1><p className="admin-subheading">Manage landing-page content, documents, and visitor download enquiries.</p></div>
+                <div><p className="admin-eyebrow">PORTFOLIO CONTROL CENTER</p><h1>Hello, <span>{session?.displayName}</span> <span>✦</span></h1><p className="admin-subheading">Manage landing-page content, documents, and visitor download enquiries.</p></div>
                 <div className="admin-date"><i className="far fa-calendar" aria-hidden="true" /> <span>{today}</span></div>
             </section>
             <div className="prototype-alert" role="note"><i className="fas fa-triangle-exclamation" aria-hidden="true" /><p><strong>Everything in one place.</strong> Update the landing page, publish documents, and review visitor enquiries. Published changes are shared through the backend.</p></div>
@@ -994,12 +1014,13 @@ function ProfileContent() {
     );
 }
 
-function OtherDocumentList({ documents, onDelete, busyId }) {
+function OtherDocumentList({ documents, onEdit, onDelete, busyId }) {
     if (!documents.length) return null;
     return <div className="certificate-admin-list" aria-live="polite">{documents.map((doc) => (
         <article className="certificate-admin-item" key={doc.documentId}>
             <div><strong>{doc.title}</strong><span>{doc.institution} · {doc.issuedAt}</span>{doc.createdAt && <small>Uploaded {formatDateTime(doc.createdAt)}</small>}</div>
             <div className="certificate-admin-actions">
+                <button className="admin-button quiet" type="button" disabled={busyId === doc.documentId} onClick={() => onEdit(doc)}>Edit</button>
                 <button className="admin-button danger" type="button" disabled={busyId === doc.documentId} onClick={() => onDelete(doc)}>Delete</button>
             </div>
         </article>
@@ -1063,7 +1084,21 @@ function DocumentsContent() {
 
     useEffect(() => {
         let active = true;
-        loadDocuments().catch((error) => {
+        loadDocuments().then(() => {
+            // Support deep links like admin-documents.html#edit-<documentId> from the Overview page:
+            // once the documents are loaded, start editing the requested document automatically.
+            const editTarget = window.location.hash.match(/^#edit-(.+)$/)?.[1];
+            if (editTarget) {
+                setDocuments((current) => {
+                    const item = current.find((doc) => doc.documentId === editTarget);
+                    if (item) {
+                        window.history.replaceState(null, '', window.location.pathname);
+                        editDocument(item);
+                    }
+                    return current;
+                });
+            }
+        }).catch((error) => {
             console.error('Could not load document details:', error);
             if (active) setLoadingError(displayError(error, 'Could not load document details.'));
         });
@@ -1179,12 +1214,12 @@ function DocumentsContent() {
                 payload.file = await readPdfAsBase64(certificateFile);
             }
             if (editing) {
-                const response = await apiRequest(`/documents/${encodeURIComponent(certificate.id)}`, {
+                const response = await apiRequest(`/documents/certificates/${encodeURIComponent(certificate.id)}`, {
                     method: 'PUT',
                     body: JSON.stringify(payload)
                 });
-                await responseJson(response, 'Could not save the document.');
-                const saved = (await response.clone().json()).document;
+                const result = await responseJson(response, 'Could not save the document.');
+                const saved = result.document;
                 setDocuments((current) => current.map((item) => item.documentId === certificate.id ? saved : item));
                 resetCertificate();
                 setCertificateFeedback({ message: 'Document updated for all visitors.', error: false });
@@ -1253,31 +1288,33 @@ function DocumentsContent() {
                         {otherDocuments.length > 0 && (
                         <div className="certificate-admin-section">
                             <div className="panel-heading"><div><p className="admin-eyebrow">OTHER DOCUMENTS</p><h2>Documents</h2></div><span className="section-icon"><i className="fas fa-file-alt" aria-hidden="true" /></span></div>
-                            <p className="panel-description">Standalone documents shown in the visitor document center. Delete any entry you no longer want visitors to see.</p>
-                            <OtherDocumentList documents={otherDocuments} onDelete={deleteDocument} busyId={busyId} />
+                        <p className="panel-description">Standalone documents shown in the visitor document center. Edit the details, replace the PDF, or delete any entry you no longer want visitors to see.</p>
+                            <OtherDocumentList documents={otherDocuments} onEdit={editDocument} onDelete={deleteDocument} busyId={busyId} />
                         </div>
                         )}
                         <div className="certificate-admin-section">
                             <div className="panel-heading"><div><p className="admin-eyebrow">CERTIFICATE LIBRARY</p><h2>Certificates</h2></div><span className="section-icon"><i className="fas fa-certificate" aria-hidden="true" /></span></div>
                             <p className="panel-description">Add certificates with their title, description, issue date, institution, and PDF. Edit the details, replace the PDF, or delete any entry.</p>
                             <CertificateList certificates={certificates} onEdit={editDocument} onDelete={deleteDocument} busyId={busyId} />
-                            {!(editing && certificate.type === 'certificate') && (
                             <form id="certificate-form" className="admin-form upload-form" onSubmit={submitCertificate}>
-                                <label htmlFor="certificate-title">Certificate title</label><input id="certificate-title" name="title" maxLength={120} required value={editing ? certificate.title : certificate.title} onChange={(event) => setCertificate({ ...certificate, title: event.target.value })} />
-                                <label htmlFor="certificate-description">Description</label><textarea id="certificate-description" name="description" rows={3} maxLength={2000} required value={editing ? certificate.description : certificate.description} onChange={(event) => setCertificate({ ...certificate, description: event.target.value })} />
-                                <label htmlFor="certificate-issued-at">Date issued</label><input id="certificate-issued-at" name="issuedAt" type="date" required value={editing ? certificate.issuedAt : certificate.issuedAt} onChange={(event) => setCertificate({ ...certificate, issuedAt: event.target.value })} />
-                                <label htmlFor="certificate-institution">Institution</label><input id="certificate-institution" name="institution" maxLength={160} required value={editing ? certificate.institution : certificate.institution} onChange={(event) => setCertificate({ ...certificate, institution: event.target.value })} />
-                                <label className="admin-button quiet browse-button" htmlFor="certificate-file-input"><i className="fas fa-folder-open" aria-hidden="true" /> {certificateFile ? certificateFile.name : 'Browse certificate PDF (required)'}</label>
+                                {editing && <div className="panel-heading"><div><p className="admin-eyebrow">EDITING {certificate.type === 'certificate' ? 'CERTIFICATE' : 'DOCUMENT'}</p><h2>{certificate.title}</h2></div></div>}
+                                <label htmlFor="certificate-title">Certificate title</label><input id="certificate-title" name="title" maxLength={120} required value={certificate.title} onChange={(event) => setCertificate({ ...certificate, title: event.target.value })} />
+                                <label htmlFor="certificate-description">Description</label><textarea id="certificate-description" name="description" rows={3} maxLength={2000} required value={certificate.description} onChange={(event) => setCertificate({ ...certificate, description: event.target.value })} />
+                                <label htmlFor="certificate-issued-at">Date issued</label><input id="certificate-issued-at" name="issuedAt" type="date" required value={certificate.issuedAt} onChange={(event) => setCertificate({ ...certificate, issuedAt: event.target.value })} />
+                                <label htmlFor="certificate-institution">Institution</label><input id="certificate-institution" name="institution" maxLength={160} required value={certificate.institution} onChange={(event) => setCertificate({ ...certificate, institution: event.target.value })} />
+                                <label className="admin-button quiet browse-button" htmlFor="certificate-file-input"><i className="fas fa-folder-open" aria-hidden="true" /> {certificateFile ? certificateFile.name : `Browse certificate PDF (${editing ? 'optional - keeps current' : 'required'})`}</label>
                                 <input key={`cert-file-${certificateInputVersion}`} id="certificate-file-input" type="file" accept="application/pdf,.pdf" hidden onChange={(event) => {
                                     const file = event.target.files?.[0];
                                     if (!file) return;
                                     setCertificateFile(file);
-                                    setCertificateFeedback({ message: `${file.name} is ready to add.`, error: false });
+                                    setCertificateFeedback({ message: `${file.name} is ready to ${editing ? 'save' : 'add'}.`, error: false });
                                 }} />
-                                <div className="form-actions"><button className="admin-button primary" type="submit" disabled={savingCertificate}><i className="fas fa-plus" aria-hidden="true" /> Add certificate</button></div>
+                                <div className="form-actions">
+                                    <button className="admin-button primary" type="submit" disabled={savingCertificate}><i className={`fas ${editing ? 'fa-check' : 'fa-plus'}`} aria-hidden="true" /> {editing ? 'Save changes' : 'Add certificate'}</button>
+                                    {editing && <button className="admin-button quiet" type="button" onClick={resetCertificate}>Cancel edit</button>}
+                                </div>
                                 <p className={`form-feedback${certificateFeedback.error ? ' error' : ''}`} aria-live="polite">{certificateFeedback.message}</p>
                             </form>
-                            )}
                         </div>
                     </section>
             </>

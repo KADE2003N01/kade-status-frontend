@@ -777,8 +777,14 @@ html.dark-theme #others::before {
 
 .grid-responsive {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 320px), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
   gap: 20px;
+  align-items: stretch;
+}
+
+.grid-responsive > .document-file-card,
+.grid-responsive > article.document-file-card {
+  width: 100%;
 }
 
 .grid-responsive > .card {
@@ -1362,6 +1368,13 @@ footer:not(.admin-footer) .footer-built a {
   background: var(--panel);
   box-shadow: var(--shadow);
   margin-bottom: 30px;
+  display: grid;
+  gap: 22px;
+}
+
+.doc-card-cv-section > .document-file-card + .document-file-card {
+  border-top: 1px solid var(--border);
+  padding-top: 22px;
 }
 
 .doc-tag {
@@ -1384,6 +1397,30 @@ footer:not(.admin-footer) .footer-built a {
 .document-file-card {
   position: relative;
   padding: 26px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 20px;
+  background: var(--panel);
+  box-shadow: var(--shadow);
+}
+
+.document-file-card:hover {
+  transform: translateY(-4px);
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-hover);
+}
+
+/* CV cards live inside the big CV section box — no extra border needed there */
+.doc-card-cv-section > .document-file-card {
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.doc-card-cv-section > .document-file-card:hover {
+  transform: none;
+  border-color: transparent;
+  box-shadow: none;
 }
 
 .document-file-card h3,
@@ -1465,9 +1502,13 @@ footer:not(.admin-footer) .footer-built a {
 
 .doc-card-button:hover {
   border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
   transform: translateY(-1px);
+}
+
+.doc-card-button:hover i {
+  color: #ffffff;
 }
 
 .doc-card-button:active {
@@ -1476,8 +1517,8 @@ footer:not(.admin-footer) .footer-built a {
 
 .doc-card-button.doc-btn-outline:hover {
   border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
 }
 
 .doc-btn-primary {
@@ -2829,12 +2870,18 @@ html.dark-theme .admin-profile-session-ok {
 
 .admin-button:hover {
   border-color: var(--accent);
-  background: var(--accent-soft);
-  color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
 }
 
-.admin-button.quiet {
-  color: var(--muted);
+.admin-button:hover i {
+  color: #ffffff;
+}
+
+.admin-button.quiet:hover {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #ffffff;
 }
 
 .admin-button.danger {
@@ -3378,9 +3425,34 @@ html.dark-theme .admin-button.danger:hover {
 
 .auth-footer {
   margin: 22px 0 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
   color: var(--faint);
   font-size: 0.7rem;
   letter-spacing: 0.1em;
+}
+
+.auth-page footer.auth-footer {
+  margin-top: 22px;
+  border: 0;
+  background: transparent;
+  color: var(--faint);
+}
+
+.auth-footer p {
+  margin: 0;
+}
+
+.auth-footer a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.auth-footer a:hover {
+  text-decoration: underline;
 }
 
 .auth-pending .admin-shell {
@@ -3464,6 +3536,8 @@ html.dark-theme .admin-button.danger:hover {
     padding: 12px 14px;
     border-radius: 10px;
     font-size: 0.92rem;
+    color: var(--text);
+    font-weight: 650;
   }
   .nav-links a::after {
     display: none;

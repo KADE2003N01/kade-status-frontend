@@ -149,7 +149,26 @@ function Navigation({ homepage = false, homepageContent }) {
   );
 }
 
-function Footer({ homepage = false, content }) {
+// The name of the admin who signed in last, published by the server and shown
+// in the footer on every public page (not just the homepage).
+function useAdminName() {
+  const [adminName, setAdminName] = useState('');
+  useEffect(() => {
+    let active = true;
+    apiFetch('/homepage')
+      .then(async (response) => {
+        const result = await response.json();
+        if (active && typeof result.content?.adminName === 'string' && result.content.adminName.trim()) {
+          setAdminName(result.content.adminName.trim());
+        }
+      })
+      .catch(() => { /* Fall back to the built-in name when the API is unreachable. */ });
+    return () => { active = false; };
+  }, []);
+  return adminName;
+}
+
+function Footer({ homepage = false, content, adminName: publishedAdminName }) {
   const defaults = {
     brandName: 'David',
     tagline: 'Building elegant solutions through code',
@@ -182,12 +201,11 @@ function Footer({ homepage = false, content }) {
     ],
     email: 'kadecomputerscience@gmail.com',
     phone: '+250 788 950 833',
-    copyright: '© 2026 David KWIZERA. All rights reserved.',
+    copyright: `© ${new Date().getFullYear()} David KWIZERA. All rights reserved.`,
     builtBy: 'Built by KadeTech',
     contactLabel: 'Contact',
     contactHref: 'tel:+250788950833',
-    sourceCodeLabel: 'Source Code',
-    sourceCodeHref: 'https://github.com/KADE2003N01/kade-status'
+    adminName: 'David KWIZERA'
   };
   const value = content ? {
     ...defaults,
@@ -197,11 +215,17 @@ function Footer({ homepage = false, content }) {
     socialLinks: content.socialLinks.map((item) => [item.label, item.href, item.icon])
   } : defaults;
   const dynamicLink = (href) => safeUrl(href, true) || '#';
+  const adminName = (typeof content?.adminName === 'string' && content.adminName.trim())
+    || (typeof publishedAdminName === 'string' && publishedAdminName.trim() ? publishedAdminName.trim() : '')
+    || 'David KWIZERA';
+  // Always computed at render time: current year + the name of the admin who signed in last.
+  const copyright = `© ${new Date().getFullYear()} ${adminName}. All rights reserved.`;
+  const footerEmail = typeof content?.email === 'string' && content.email.includes('@') ? content.email.trim() : 'kadecomputerscience@gmail.com';
   return (
     <footer data-home-section={homepage ? 'footer' : undefined} hidden={homepage && content?.visible === false}>
       <div className="footer-container">
         <div className="footer-section footer-brand">
-          <div className="footer-logo">{value.brandName}</div>
+          <div className="footer-logo">{adminName.split(/\s+/)[0]}</div>
           <p className="footer-tagline">{value.tagline}</p>
           <p className="footer-description">{value.description}</p>
         </div>
@@ -224,8 +248,8 @@ function Footer({ homepage = false, content }) {
         </div>
       </div>
       <div className="footer-bottom">
-        <p className="footer-copy">{value.copyright}</p>
-        <p className="footer-built">{value.builtBy} | <a href={dynamicLink(value.contactHref)}>{value.contactLabel}</a> | <a href={dynamicLink(value.sourceCodeHref)} target="_blank" rel="noopener noreferrer">{value.sourceCodeLabel}</a></p>
+        <p className="footer-copy">{copyright}</p>
+        <p className="footer-built">{value.builtBy} | <a href={dynamicLink(value.contactHref)}>{value.contactLabel}</a> | <a href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(footerEmail)}`} target="_blank" rel="noopener noreferrer">Email</a></p>
       </div>
     </footer>
   );
@@ -258,12 +282,13 @@ function Hero({ id, title, subtitle, intro, homepage = false, videoUrl }) {
 }
 
 function InnerPage({ title, subtitle, intro, id, children }) {
+  const adminName = useAdminName();
   return (
     <>
       <Navigation />
       <Hero id={id} title={{ text: title }} subtitle={subtitle} intro={intro} />
       {children}
-      <Footer />
+      <Footer adminName={adminName} />
     </>
   );
 }
@@ -323,9 +348,9 @@ const homepageFallback = {
       { label: 'Facebook', href: 'https://facebook.com/', icon: 'fab fa-facebook' }
     ],
     email: 'kadecomputerscience@gmail.com', phone: '+250 788 950 833',
-    copyright: '© 2026 David KWIZERA. All rights reserved.', builtBy: 'Built by KadeTech',
+    copyright: `© ${new Date().getFullYear()} David KWIZERA. All rights reserved.`, builtBy: 'Built by KadeTech',
     contactLabel: 'Contact', contactHref: 'tel:+250788950833',
-    sourceCodeLabel: 'Source Code', sourceCodeHref: 'https://github.com/KADE2003N01/kade-status'
+    adminName: 'David KWIZERA'
   }
 };
 
@@ -353,7 +378,7 @@ function Homepage() {
   const highlights = c.highlights || homepageFallback.highlights;
   const documents = c.documents || homepageFallback.documents;
   const brand = c.brand || homepageFallback.brand;
-  const footer = { ...homepageFallback.footer, ...(c.footer || {}) };
+  const footer = { ...homepageFallback.footer, ...(c.footer || {}), adminName: typeof c.adminName === 'string' && c.adminName.trim() ? c.adminName.trim() : 'David KWIZERA' };
   const videoUrl = safeAssetUrl(hero.videoUrl);
   const heroBackground = safeAssetUrl(hero.backgroundImageUrl) || backgroundImageUrl;
   const validIcon = (icon) => typeof icon === 'string' && /^[a-z0-9-]+(?:\s+[a-z0-9-]+)*$/i.test(icon) ? icon : 'fas fa-circle';
@@ -820,7 +845,6 @@ function DocumentsPage() {
   const [loading, setLoading] = useState(true);
   const [requestedDocumentId, setRequestedDocumentId] = useState('');
   const [certificatesExpanded, setCertificatesExpanded] = useState(false);
-  const [moreCvsExpanded, setMoreCvsExpanded] = useState(false);
   const previewUrls = useRef(new Map());
   const previewPanels = useRef(new Map());
   const openDownload = (documentId) => setRequestedDocumentId(documentId);
@@ -915,65 +939,45 @@ function DocumentsPage() {
           <div className="doc-feature-grid"><div className="doc-feature-item"><i className="fas fa-shield-alt text-accent"></i><span className="font-bold">Secure Download</span></div><div className="doc-feature-item"><i className="fas fa-clock text-accent"></i><span className="font-bold">Always Current</span></div><div className="doc-feature-item"><i className="fas fa-file-pdf text-accent"></i><span className="font-bold">PDF Format</span></div></div>
         </div>
         <div className="doc-card-cv-section">
-          {cv ? (
-          <>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 20 }}>
-              <div style={{ width: 56, height: 56, background: 'var(--accent-soft)', border: '1.5px solid var(--border-strong)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <i className="fas fa-file-pdf" style={{ color: 'var(--accent)', fontSize: '1.75rem' }}></i>
+          {cvList.length ? cvList.map((cvDoc, index) => (
+          <div className="document-file-card" data-cv-card={cvDoc.documentId} key={cvDoc.documentId} style={index ? { marginTop: 20 } : undefined}>
+            <div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 20 }}>
+                <div style={{ width: 56, height: 56, background: 'var(--accent-soft)', border: '1.5px solid var(--border-strong)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                  <i className="fas fa-file-pdf" style={{ color: 'var(--accent)', fontSize: '1.75rem' }}></i>
+                </div>
+                <div>
+                  <h4 data-cv-title style={{ color: 'var(--text)', margin: '0 0 4px', fontSize: '1.3rem', fontWeight: 800 }}>{cvDoc.title || 'Curriculum Vitae'}{index === 0 && cvList.length > 1 ? ' (Latest)' : ''}</h4>
+                  <p data-cv-meta style={{ color: 'var(--accent)', fontSize: '0.9rem', margin: 0, fontWeight: 700 }}>{[cvDoc.institution, cvDoc.issuedAt ? dateFormat(`${cvDoc.issuedAt}T00:00:00`, { month: 'short', year: 'numeric' }) : ''].filter(Boolean).join(' · ') || 'Professional Resume'}</p>
+                </div>
               </div>
-              <div>
-                <h4 id="cv-public-title" style={{ color: 'var(--text)', margin: '0 0 4px', fontSize: '1.3rem', fontWeight: 800 }}>{cv?.title || 'Curriculum Vitae'}</h4>
-                <p id="cv-public-meta" style={{ color: 'var(--accent)', fontSize: '0.9rem', margin: 0, fontWeight: 700 }}>{cv ? [cv.institution, cv.issuedAt ? dateFormat(`${cv.issuedAt}T00:00:00`, { month: 'short', year: 'numeric' }) : ''].filter(Boolean).join(' · ') || 'Professional Resume' : 'Professional Resume'}</p>
+              {cvDoc.description && <p style={{ color: 'var(--muted)', fontSize: '0.98rem', lineHeight: 1.75, marginBottom: 20 }}>{cvDoc.description}</p>}
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                  <span className="doc-tag"><i className="fas fa-check-circle"></i>Virus Free</span>
+                  <span className="doc-tag"><i className="fas fa-lock"></i>Secure</span>
+                  <span className="doc-tag"><i className="fas fa-file-pdf"></i>PDF</span>
+                </div>
+              </div>
+              <div className="public-document-actions">
+                <button className="doc-card-button doc-btn-outline" type="button" aria-expanded={Boolean(previews[cvDoc.documentId])} onClick={() => showPreview(cvDoc.documentId)}>{previews[cvDoc.documentId] ? <><i className="fas fa-eye-slash" aria-hidden="true"></i>Hide document</> : <><i className="fas fa-eye" aria-hidden="true"></i>View full document</>}</button>
+                <button className="doc-card-button doc-btn-outline" type="button" onClick={() => openDownload(cvDoc.documentId)}><i className="fas fa-download" aria-hidden="true"></i>Download</button>
+              </div>
+              <div ref={(node) => { if (node) previewPanels.current.set(cvDoc.documentId, node); }} className="document-preview-panel" hidden={!previews[cvDoc.documentId]}>
+                <div className="document-preview-heading"><h3>{cvDoc.title} preview</h3></div>
+                <iframe className="document-preview-frame" title={`${cvDoc.title} preview`} src={previews[cvDoc.documentId] || undefined}></iframe>
+              </div>
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 16 }}>
+                <p style={{ color: 'var(--faint)', fontSize: '0.84rem', margin: 0, textAlign: 'center' }}>
+                  <i className="fas fa-calendar-alt" style={{ color: 'var(--accent)', marginRight: 6 }}></i>Uploaded: <span data-cv-uploaded>{(cvDoc.createdAt || cvDoc.updatedAt) ? dateFormat(cvDoc.createdAt || cvDoc.updatedAt, { dateStyle: 'medium' }) : 'Not published yet'}</span> • <i className="fas fa-info-circle" style={{ color: 'var(--accent)', margin: '0 6px 0 10px' }}></i>File: <span data-cv-file-name>{cvDoc.filename || 'CV.pdf'}</span>
+                </p>
               </div>
             </div>
-            <p style={{ color: 'var(--muted)', fontSize: '0.98rem', lineHeight: 1.75, marginBottom: 20 }}>
-              <span id="cv-public-description">{cv?.description || 'My curriculum vitae provides a comprehensive overview of my technical expertise, educational background at the University of Rwanda, and professional contributions to the field of software engineering.'}</span>
-            </p>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                <span className="doc-tag"><i className="fas fa-check-circle"></i>Virus Free</span>
-                <span className="doc-tag"><i className="fas fa-lock"></i>Secure</span>
-                <span className="doc-tag"><i className="fas fa-file-pdf"></i>500KB</span>
-              </div>
-            </div>
-            <DocumentActionButtons documentId="cv" onPreview={showPreview} onDownload={openDownload} primary previewOpen={Boolean(previews.cv)} />
           </div>
-          <div id="cv-preview-panel" ref={(node) => { if (node) previewPanels.current.set('cv', node); }} className="document-preview-panel" hidden={!previews.cv}>
-            <div className="document-preview-heading"><h3>Curriculum Vitae preview</h3></div>
-            <iframe id="cv-preview-frame" className="document-preview-frame" title="Curriculum Vitae preview" src={previews.cv || undefined}></iframe>
-          </div>
-          <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 16 }}>
-            <p style={{ color: 'var(--faint)', fontSize: '0.84rem', margin: 0, textAlign: 'center' }}>
-              <i className="fas fa-calendar-alt" style={{ color: 'var(--accent)', marginRight: 6 }}></i>Uploaded: <span id="cv-last-updated">{(cv.createdAt || cv.updatedAt) ? dateFormat(cv.createdAt || cv.updatedAt, { dateStyle: 'medium' }) : 'Not published yet'}</span> • <i className="fas fa-info-circle" style={{ color: 'var(--accent)', margin: '0 6px 0 10px' }}></i>File: <span id="cv-public-file-name">{cv?.filename || 'KWIZERA David CV.pdf'}</span>
-            </p>
-          </div>
-          </>
-          ) : (
-          <div className="document-add-slot cv-add-slot"><span className="document-add-icon"><i className="fas fa-file-circle-xmark" aria-hidden="true"></i></span><h3>No CV published yet</h3><p>The curriculum vitae has been removed. It will appear here again once a new CV is published.</p></div>
+          )) : (
+          <div className="document-add-slot cv-add-slot"><span className="document-add-icon"><i className="fas fa-file-circle-xmark" aria-hidden="true"></i></span><h3>No CV added yet</h3><p>The curriculum vitae has not been published yet. It will appear here as soon as a CV is added.</p></div>
           )}
         </div>
-        {cv && cvList.length > 1 && (
-          <div className="document-add-slot cv-add-slot" style={{ borderStyle: 'solid' }}>
-            <span className="document-add-icon"><i className="fas fa-file-lines" aria-hidden="true"></i></span>
-            <h3>More CVs ({cvList.length - 1})</h3>
-            <p>Older curriculum vitae versions also available in the document center.</p>
-            {(moreCvsExpanded ? cvList.slice(1) : cvList.slice(1, 1 + 3)).map((older) => (
-              <div key={older.documentId} style={{ display: 'flex', gap: 12, alignItems: 'center', flexWrap: 'wrap', width: '100%' }}>
-                <span style={{ color: 'var(--text)', fontWeight: 700 }}>{older.title}</span>
-                <span style={{ color: 'var(--muted)', fontSize: '0.85rem' }}>Uploaded {(older.createdAt || older.updatedAt) ? dateFormat(older.createdAt || older.updatedAt, { dateStyle: 'medium' }) : ''}</span>
-                <button className="doc-card-button doc-btn-outline" type="button" aria-expanded={Boolean(previews[older.documentId])} onClick={() => showPreview(older.documentId)}>{previews[older.documentId] ? <><i className="fas fa-eye-slash" aria-hidden="true"></i>Hide document</> : <><i className="fas fa-eye" aria-hidden="true"></i>View full document</>}</button>
-                <button className="doc-card-button doc-btn-outline" type="button" onClick={() => openDownload(older.documentId)}><i className="fas fa-download" aria-hidden="true"></i>Download</button>
-              </div>
-            ))}
-            {cvList.length - 1 > 3 && (
-              <button className="doc-card-button doc-btn-outline" type="button" style={{ width: '100%', justifyContent: 'center' }} aria-expanded={moreCvsExpanded} onClick={() => setMoreCvsExpanded((value) => !value)}>
-                <i className={`fas ${moreCvsExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} aria-hidden="true"></i> {moreCvsExpanded ? 'Collapse list' : `Expand all ${cvList.length - 1} CVs`}
-              </button>
-            )}
-          </div>
-        )}
-        <div className="document-add-slot cv-add-slot"><span className="document-add-icon"><i className="fas fa-file-circle-plus" aria-hidden="true"></i></span><h3>Add a CV</h3><p>Sign in as the administrator to publish or replace the latest CV.</p><a className="doc-card-button doc-btn-outline" href="admin-login.html">Add CV</a></div>
         <p id="documents-feedback" className="documents-feedback" role="status" aria-live="polite">{loading ? '' : feedback}</p>
         <div className="mt-lg text-left">
           <div className="text-center mb-lg"><h2 className="doc-title-main" style={{ fontSize: 'clamp(1.5rem, 5vw, 2.2rem)' }}><i className="fas fa-certificate text-accent mr-sm"></i> Certificates &amp; Documents</h2>
@@ -1020,11 +1024,14 @@ function DocumentsPage() {
               <div className="public-certificate-heading"><span className="public-certificate-icon"><i className="fas fa-certificate" aria-hidden="true"></i></span><div><h3>{certificate.title}</h3><span className="public-certificate-type">Professional certificate</span></div></div>
               <p className="public-certificate-description">{certificate.description}</p>
               <div className="public-document-actions"><button className="doc-card-button doc-btn-outline" type="button" aria-expanded={Boolean(previews[certificate.documentId])} onClick={() => showPreview(certificate.documentId)}>{previews[certificate.documentId] ? <><i className="fas fa-eye-slash" aria-hidden="true"></i>Hide document</> : <><i className="fas fa-eye" aria-hidden="true"></i>View full document</>}</button><button className="doc-card-button doc-btn-outline" type="button" onClick={() => openDownload(certificate.documentId)}><i className="fas fa-download" aria-hidden="true"></i>Download</button></div>
-              <div id={`${certificate.documentId}-preview-panel`} ref={(node) => { if (node) previewPanels.current.set(certificate.documentId, node); }} className="document-preview-panel" hidden={!previews[certificate.documentId]}><div className="document-preview-heading"><h3>{certificate.title} preview</h3></div><iframe id={`${certificate.documentId}-preview-frame`} className="document-preview-frame" title={`${certificate.title} preview`} src={previews[certificate.documentId] || undefined}></iframe></div>
+              <div ref={(node) => { if (node) previewPanels.current.set(certificate.documentId, node); }} className="document-preview-panel" hidden={!previews[certificate.documentId]}><div className="document-preview-heading"><h3>{certificate.title} preview</h3></div><iframe className="document-preview-frame" title={`${certificate.title} preview`} src={previews[certificate.documentId] || undefined}></iframe></div>
               <div className="public-certificate-meta"><span>Issued {certificate.issuedAt}</span><span>{certificate.institution}</span></div>
               {(certificate.createdAt || certificate.updatedAt) && <p style={{ color: 'var(--faint)', fontSize: '0.78rem', margin: '8px 0 0' }}><i className="fas fa-cloud-arrow-up" aria-hidden="true" style={{ color: 'var(--accent)', marginRight: 6 }}></i>Uploaded {dateFormat(certificate.createdAt || certificate.updatedAt, { dateStyle: 'medium' })}</p>}
+              {certificate.filename && <p style={{ color: 'var(--faint)', fontSize: '0.78rem', margin: '4px 0 0' }}><i className="fas fa-file" aria-hidden="true" style={{ color: 'var(--accent)', marginRight: 6 }}></i>{certificate.filename}</p>}
             </article>)}
-            <div className="document-add-slot certificate-add-slot"><span className="document-add-icon"><i className="fas fa-certificate" aria-hidden="true"></i></span><h3>Add a certificate</h3><p>Sign in as the administrator to add a certificate and its details.</p><a className="doc-card-button doc-btn-outline" href="admin-login.html">Add certificate</a></div>
+            {!certificates.length && (
+            <div className="document-add-slot certificate-add-slot"><span className="document-add-icon"><i className="fas fa-certificate" aria-hidden="true"></i></span><h3>No certificates added yet</h3><p>Certificates will appear here as soon as they are added.</p></div>
+            )}
           </div>
         </div>
       </section>
