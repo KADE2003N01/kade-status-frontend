@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: david-portifolio
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: ./dist
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://kade-status-backend-e1th.onrender.com/api/*
+      - type: rewrite
+        source: /*
+        destination: /index.html
