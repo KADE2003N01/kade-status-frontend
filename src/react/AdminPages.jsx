@@ -24,17 +24,35 @@ function actionSuccessMessage(method, path) {
     return 'Changes saved successfully.';
 }
 
+// Fallback auth token for browsers that block third-party cookies (mobile).
+// The httpOnly cookie remains the primary session mechanism; this only kicks
+// in when the cookie was rejected.
+export function getStoredSessionToken() {
+    try { return window.sessionStorage.getItem('kade-admin-session-token') || ''; } catch { return ''; }
+}
+
+export function storeSessionToken(token) {
+    try {
+        if (token) window.sessionStorage.setItem('kade-admin-session-token', token);
+        else window.sessionStorage.removeItem('kade-admin-session-token');
+    } catch { /* Storage unavailable — cookie-only session. */ }
+}
+
 export async function apiRequest(path, options = {}) {
     const { silentNotification = false, ...requestOptions } = options;
     const method = (requestOptions.method || 'GET').toUpperCase();
     let response;
     try {
+        const baseHeaders = requestOptions.body && typeof requestOptions.body === 'string'
+            ? { 'Content-Type': 'application/json', ...requestOptions.headers }
+            : requestOptions.headers;
+        const sessionToken = getStoredSessionToken();
         response = await apiFetch(path, {
             ...requestOptions,
             credentials: 'include',
-            headers: requestOptions.body && typeof requestOptions.body === 'string'
-                ? { 'Content-Type': 'application/json', ...requestOptions.headers }
-                : requestOptions.headers
+            headers: sessionToken && !baseHeaders?.Authorization
+                ? { ...baseHeaders, Authorization: `Bearer ${sessionToken}` }
+                : baseHeaders
         });
     } catch (error) {
         if (method !== 'GET' && !silentNotification) notifyAdmin(displayError(error, 'The action could not be completed.'), 'error');
@@ -106,8 +124,12 @@ function useAdminSession() {
         let active = true;
         (async () => {
             try {
-                const response = await apiFetch('/auth/me', { credentials: 'include' });
+                const response = await apiFetch('/auth/me', {
+                    credentials: 'include',
+                    headers: getStoredSessionToken() ? { Authorization: `Bearer ${getStoredSessionToken()}` } : undefined
+                });
                 if (response.status === 401) {
+                    storeSessionToken('');
                     window.location.replace(ADMIN_LOGIN_URL);
                     return;
                 }
@@ -135,6 +157,7 @@ function useAdminSession() {
         try {
             const response = await apiRequest('/auth/logout', { method: 'POST' });
             if (!response.ok) throw new Error('The server could not end this admin session.');
+            storeSessionToken('');
             window.location.replace(ADMIN_LOGIN_URL);
         } catch (error) {
             console.error('Admin logout failed:', error);
@@ -376,12 +399,16 @@ export function AdminLoginPage() {
         // Warm up a sleeping server (e.g. Render free tier) while the page opens.
         apiFetch('/health', { credentials: 'include' }).catch(() => {});
         let active = true;
-        apiFetch('/auth/me', { credentials: 'include' })
+        apiFetch('/auth/me', {
+            credentials: 'include',
+            headers: getStoredSessionToken() ? { Authorization: `Bearer ${getStoredSessionToken()}` } : undefined
+        })
             .then(async (response) => {
                 if (response.ok) {
                     window.location.replace('admin.html');
                     return;
                 }
+                if (response.status === 401) storeSessionToken('');
                 if (response.status !== 401) {
                     const result = await response.json();
                     throw new Error(result.error || 'Could not verify the admin session.');
@@ -421,13 +448,22 @@ export function AdminLoginPage() {
                 return;
             }
 
-            // Confirm the browser saved and sends the new HTTP-only session
-            // cookie before navigating to a page that requires that session.
-            const sessionResponse = await apiFetch('/auth/me', { credentials: 'include' });
+            // Save the fallback session token (used when the browser blocks
+            // third-party cookies, e.g. on mobile).
+            storeSessionToken(result.sessionToken || '');
+
+            // Confirm the session is usable: either via the HTTP-only cookie
+            // or the stored bearer token.
+            const sessionToken = getStoredSessionToken();
+            const sessionResponse = await apiFetch('/auth/me', {
+                credentials: 'include',
+                headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined
+            });
             const sessionResult = await sessionResponse.json();
             const signedInEmail = result.user?.email?.trim().toLowerCase();
             const verifiedEmail = sessionResult.user?.email?.trim().toLowerCase();
             if (!sessionResponse.ok || !sessionResult.success || !signedInEmail || verifiedEmail !== signedInEmail) {
+                storeSessionToken('');
                 const message = 'Your credentials were accepted, but this browser could not verify the admin session. Allow cookies for this site and try again.';
                 setFeedback(message);
                 setLoginNotification({ message, tone: 'error' });
