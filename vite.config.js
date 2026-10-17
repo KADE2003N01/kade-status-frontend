@@ -88,6 +88,11 @@ function reactPageShell() {
 
 export default defineConfig({
   plugins: [reactPageShell()],
+  test: {
+    environment: 'jsdom',
+    globals: true,
+    include: ['src/**/*.test.{js,jsx}']
+  },
   publicDir: false,
   server: {
     proxy: {

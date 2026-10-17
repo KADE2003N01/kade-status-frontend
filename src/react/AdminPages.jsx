@@ -6,6 +6,8 @@ const ADMIN_LOGIN_URL = 'admin-login.html';
 const AdminSessionContext = createContext(null);
 const ADMIN_NOTIFICATION_EVENT = 'kade-admin-notification';
 
+export { ADMIN_NOTIFICATION_EVENT };
+
 function notifyAdmin(message, tone = 'success') {
     window.dispatchEvent(new CustomEvent(ADMIN_NOTIFICATION_EVENT, { detail: { message, tone } }));
 }
@@ -22,7 +24,7 @@ function actionSuccessMessage(method, path) {
     return 'Changes saved successfully.';
 }
 
-async function apiRequest(path, options = {}) {
+export async function apiRequest(path, options = {}) {
     const { silentNotification = false, ...requestOptions } = options;
     const method = (requestOptions.method || 'GET').toUpperCase();
     let response;
@@ -55,7 +57,7 @@ async function apiRequest(path, options = {}) {
     return response;
 }
 
-async function responseJson(response, fallbackMessage) {
+export async function responseJson(response, fallbackMessage) {
     const result = await response.json();
     if (!response.ok) throw new Error(result.error || fallbackMessage);
     return result;
@@ -73,7 +75,7 @@ function describePublishError(error) {
         : `Could not publish the homepage. ${message}`;
 }
 
-function formatFieldLabel(key) {
+export function formatFieldLabel(key) {
     return key
         .replace(/([a-z])([A-Z])/g, '$1 $2')
         .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2')
@@ -693,10 +695,15 @@ function DownloadsContent() {
     );
 }
 
-function updateNestedValue(target, path, value) {
+export function updateNestedValue(target, path, value) {
     const copy = structuredClone(target);
     let parent = copy;
-    for (const key of path.slice(0, -1)) parent = parent[key];
+    for (const key of path.slice(0, -1)) {
+        if (parent == null || typeof parent !== 'object' || !(key in parent)) {
+            throw new Error(`Cannot set value: path segment "${key}" is missing in the content.`);
+        }
+        parent = parent[key];
+    }
     parent[path[path.length - 1]] = value;
     return copy;
 }
