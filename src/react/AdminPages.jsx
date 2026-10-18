@@ -494,16 +494,16 @@ export function AdminLoginPage() {
                         <h1 id="login-title">Welcome back</h1>
                         <p>Sign in with your administrator credentials to continue.</p>
                     </div>
-                    <form className="auth-form" onSubmit={submitLogin}>
+                    <form className="auth-form" onSubmit={submitLogin} autoComplete="off">
                         <label htmlFor="admin-email">Email address</label>
                         <div className="auth-input-wrap">
                             <i className="far fa-envelope" aria-hidden="true" />
-                            <input id="admin-email" name="email" type="email" autoComplete="username" maxLength={254} placeholder="you@example.com" required value={email} onChange={(event) => setEmail(event.target.value)} />
+                            <input id="admin-email" name="email" type="email" autoComplete="off" maxLength={254} placeholder="you@example.com" required value={email} onChange={(event) => setEmail(event.target.value)} />
                         </div>
                         <label htmlFor="admin-password">Password</label>
                         <div className="auth-input-wrap">
                             <i className="fas fa-key" aria-hidden="true" />
-                            <input id="admin-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" maxLength={1024} placeholder="Enter your password" required value={password} onChange={(event) => setPassword(event.target.value)} />
+                            <input id="admin-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" maxLength={1024} placeholder="Enter your password" required value={password} onChange={(event) => setPassword(event.target.value)} />
                             <button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((visible) => !visible)}>
                                 <i className={`far ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`} aria-hidden="true" />
                             </button>
