@@ -16,6 +16,19 @@ export const API_BASE_URLS = [...new Set([
 
 export const API_BASE_URL = API_BASE_URLS[0];
 
+/** Resolve API hosted assets independently of the page host. <img> requests do
+ * not pass through apiFetch's API fallback, so relative /api URLs can otherwise
+ * point at a static frontend host that does not proxy them. */
+export function resolveApiAssetUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) return '';
+  const candidate = value.trim();
+  if (/^https?:\/\//i.test(candidate)) return candidate;
+  if (!candidate.startsWith('/api/')) return candidate;
+
+  const directApiBase = API_BASE_URLS.find((baseUrl) => /^https?:\/\//i.test(baseUrl));
+  return directApiBase ? `${directApiBase}${candidate.slice(4)}` : candidate;
+}
+
 export async function apiFetch(path, options) {
   let lastError;
 

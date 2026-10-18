@@ -1,5 +1,5 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { apiFetch } from './api.js';
+import { apiFetch, resolveApiAssetUrl } from './api.js';
 import TimedNotification from './TimedNotification.jsx';
 
 const ADMIN_LOGIN_URL = 'admin-login.html';
@@ -254,7 +254,7 @@ function useAdminProfileImage() {
             .then((response) => responseJson(response, 'Could not load the profile image.'))
             .then((result) => {
                 const imageUrl = result.content?.brand?.imageUrl;
-                const validImageUrl = typeof imageUrl === 'string' && imageUrl && !imageUrl.includes('media/') ? imageUrl : '';
+                const validImageUrl = typeof imageUrl === 'string' && imageUrl && !imageUrl.includes('media/') ? resolveApiAssetUrl(imageUrl) : '';
                 if (active && validImageUrl) setProfileImage(validImageUrl);
             })
             .catch((error) => console.error('Could not load the profile image:', error));
@@ -1046,7 +1046,7 @@ function HomepageContent() {
     const today = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(now);
     const publishedProfileImage = typeof content?.brand?.imageUrl === 'string'
         && !content.brand.imageUrl.includes('media/')
-        ? content.brand.imageUrl
+        ? resolveApiAssetUrl(content.brand.imageUrl)
         : '';
     return (
             <>
@@ -1142,7 +1142,7 @@ function ProfileContent() {
 
     const publishedProfileImage = typeof content?.brand?.imageUrl === 'string'
         && !content.brand.imageUrl.includes('media/')
-        ? content.brand.imageUrl
+        ? resolveApiAssetUrl(content.brand.imageUrl)
         : '';
 
     async function publishProfileImage(event) {

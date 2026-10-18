@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { apiFetch } from './api.js';
+import { apiFetch, resolveApiAssetUrl } from './api.js';
 import TimedNotification from './TimedNotification.jsx';
 import backgroundImageUrl from '../media/background image.jpeg';
 
@@ -26,7 +26,7 @@ function safeUrl(value, allowContactSchemes = false) {
 }
 
 function safeAssetUrl(value) {
-  const url = safeUrl(value);
+  const url = safeUrl(resolveApiAssetUrl(value));
   return url && !new URL(url).pathname.includes('/media/') ? url : null;
 }
 
@@ -86,7 +86,7 @@ function useProfileImage(homepage = false) {
       .catch((error) => console.error('Could not load the published profile image:', error));
     return () => { active = false; };
   }, []);
-  return profileImage;
+  return [profileImage, () => setProfileImage('')];
 }
 
 function ThemeToggle() {
@@ -114,7 +114,7 @@ function ThemeToggle() {
 }
 
 function Navigation({ homepage = false, homepageContent }) {
-  const image = useProfileImage(homepage);
+  const [image, clearImage] = useProfileImage(homepage);
   const [open, setOpen] = useState(false);
   const navRef = useRef(null);
   const currentFilename = typeof window === 'undefined' ? '' : window.location.pathname.split('/').pop();
@@ -164,7 +164,7 @@ function Navigation({ homepage = false, homepageContent }) {
     <nav ref={navRef}>
       <a className="nav-logo" href={homeHref} aria-label="David KWIZERA home">
         {image ? (
-          <img src={image} alt="Kade" className="nav-avatar" />
+          <img src={image} alt="Kade" className="nav-avatar" onError={clearImage} />
         ) : (
           <span className="nav-avatar-fallback">K</span>
         )}
