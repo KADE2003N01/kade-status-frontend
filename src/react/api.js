@@ -22,10 +22,24 @@ export const API_BASE_URL = API_BASE_URLS[0];
 export function resolveApiAssetUrl(value) {
   if (typeof value !== 'string' || !value.trim()) return '';
   const candidate = value.trim();
-  if (/^https?:\/\//i.test(candidate)) return candidate;
-  if (!candidate.startsWith('/api/')) return candidate;
+  const localHost = (hostname) => ['localhost', '127.0.0.1', '::1'].includes(hostname.toLowerCase());
+  const isLocalPage = localHost(window.location.hostname);
+  const publicApiBase = API_BASE_URLS.find((baseUrl) => {
+    if (!/^https?:\/\//i.test(baseUrl)) return false;
+    try { return !localHost(new URL(baseUrl).hostname); } catch { return false; }
+  });
+  const directApiBase = publicApiBase || API_BASE_URLS.find((baseUrl) => /^https?:\/\//i.test(baseUrl));
 
-  const directApiBase = API_BASE_URLS.find((baseUrl) => /^https?:\/\//i.test(baseUrl));
+  if (/^https?:\/\//i.test(candidate)) {
+    try {
+      const url = new URL(candidate);
+      if (!isLocalPage && localHost(url.hostname) && url.pathname.startsWith('/api/') && publicApiBase) {
+        return `${publicApiBase}${url.pathname.slice(4)}${url.search}${url.hash}`;
+      }
+      return candidate;
+    } catch { return ''; }
+  }
+  if (!candidate.startsWith('/api/')) return candidate;
   return directApiBase ? `${directApiBase}${candidate.slice(4)}` : candidate;
 }
 
