@@ -51,6 +51,9 @@ export async function apiFetch(path, options) {
       const response = await fetch(`${baseUrl}${path}`, options);
       const contentType = response.headers.get('content-type') || '';
 
+      // Document preview endpoints return PDFs; the other app endpoints return JSON.
+      if (contentType.toLowerCase().includes('application/pdf')) return response;
+
       // A Render static site without its /api rewrite can return the frontend
       // HTML shell with status 200. Treat that as a proxy miss and try the
       // backend URL; keep normal JSON auth errors (including 401) authoritative.

@@ -12,11 +12,13 @@ import {
 } from '../pages/public/PublicPages.jsx';
 import {
   AdminDocumentsPage,
+  AdminAccountsPage,
   AdminDownloadsPage,
   AdminHomepagePage,
   AdminLoginPage,
   AdminOverviewPage,
-  AdminProfilePage
+  AdminProfilePage,
+  AdminPasswordResetPage
 } from '../pages/admin/AdminPages.jsx';
 import { API_BASE_URL, API_BASE_URLS } from '../services/api.js';
 import GlobalStyles from '../styles/GlobalStyles.jsx';
@@ -36,7 +38,9 @@ const adminPages = {
   'admin-downloads.html': [AdminDownloadsPage, 'admin-page auth-pending'],
   'admin-homepage.html': [AdminHomepagePage, 'admin-page auth-pending'],
   'admin-documents.html': [AdminDocumentsPage, 'admin-page auth-pending'],
-  'admin-profile.html': [AdminProfilePage, 'admin-page auth-pending']
+  'admin-profile.html': [AdminProfilePage, 'admin-page auth-pending'],
+  'admin-accounts.html': [AdminAccountsPage, 'admin-page auth-pending'],
+  'admin-reset-password.html': [AdminPasswordResetPage, 'auth-page']
 };
 const fileName = window.location.pathname.split('/').pop() || 'index.html';
 const [Page, bodyClassName] = publicPages[fileName] || adminPages[fileName] || publicPages['index.html'];

@@ -16,7 +16,9 @@ const pageTitles = {
   'admin-downloads.html': 'Downloads | Portfolio Admin',
   'admin-homepage.html': 'Landing Page | Portfolio Admin',
   'admin-documents.html': 'Documents | Portfolio Admin',
-  'admin-profile.html': 'My Profile | Portfolio Admin'
+  'admin-profile.html': 'My Profile | Portfolio Admin',
+  'admin-accounts.html': 'Admin Accounts | Portfolio Admin',
+  'admin-reset-password.html': 'Reset Admin Password | Portfolio Admin'
 };
 
 function reactPageShell() {

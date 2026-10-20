@@ -30,6 +30,31 @@ function safeAssetUrl(value) {
   return url && !new URL(url).pathname.includes('/media/') ? url : null;
 }
 
+function ExpandableDescription({ children, className = '' }) {
+  const descriptionRef = useRef(null);
+  const [expanded, setExpanded] = useState(false);
+  const [canExpand, setCanExpand] = useState(false);
+  const text = typeof children === 'string' ? children.trim() : '';
+
+  useEffect(() => {
+    const node = descriptionRef.current;
+    if (!node || expanded) return undefined;
+    const measure = () => setCanExpand(node.scrollHeight > node.clientHeight + 1);
+    measure();
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(measure) : null;
+    observer?.observe(node);
+    return () => observer?.disconnect();
+  }, [expanded, text]);
+
+  if (!text) return null;
+  return <div className={`expandable-description-wrap ${className}`}>
+    <p ref={descriptionRef} className={`expandable-description${expanded ? ' expanded' : ''}`}>{text}</p>
+    {(canExpand || expanded) && <button className="description-toggle" type="button" aria-expanded={expanded} onClick={() => setExpanded((value) => !value)}>
+      {expanded ? 'Read less' : 'Read more'} <i className={`fas fa-chevron-${expanded ? 'up' : 'down'}`} aria-hidden="true"></i>
+    </button>}
+  </div>;
+}
+
 function usePublishedUpdateNotice(enabled = true) {
   const [message, setMessage] = useState('');
   const dismiss = useCallback(() => setMessage(''), []);
@@ -649,8 +674,8 @@ function ContactPage() {
   const submit = async (event) => {
     event.preventDefault();
     const payload = { name: form.name.trim(), email: form.email.trim(), message: form.message.trim() };
-    if (!payload.name || !payload.email || !payload.message) {
-      setStatus({ text: 'Please fill out all fields', color: 'var(--accent)' });
+    if (payload.name.length < 2 || payload.name.length > 100 || payload.message.length < 10 || payload.message.length > 3000) {
+      setStatus({ text: 'Enter a name (2–100 characters) and a message (10–3,000 characters).', error: true });
       return;
     }
     setSending(true);
@@ -662,14 +687,14 @@ function ContactPage() {
       });
       const result = await response.json();
       if (response.ok && result.success) {
-        setStatus({ text: 'Message sent! Check your inbox for confirmation.', color: 'var(--accent)' });
+        setStatus({ text: 'Message sent! Check your inbox for confirmation.', error: false });
         setForm({ name: '', email: '', message: '' });
       } else {
-        setStatus({ text: `Notice: ${result.error || 'Failed to send'}`, color: 'var(--accent)' });
+        setStatus({ text: result.error || 'Failed to send. Please try again.', error: true });
       }
     } catch (error) {
       console.error('Form submission error:', error);
-      setStatus({ text: 'Connection issue. Is the server running?', color: 'var(--accent)' });
+      setStatus({ text: 'Connection issue. Please try again later.', error: true });
     } finally {
       setSending(false);
     }
@@ -681,11 +706,15 @@ function ContactPage() {
         <h3 style={{ color: 'var(--accent)', marginBottom: 16, fontSize: '1.25rem', fontWeight: 800 }}>Send Me a Message</h3>
         <p>Have a project, opportunity, or just want to say hi? Feel free to reach out — I'm always open to connecting.</p>
         <form className="contact-form" onSubmit={submit}>
-          <input type="text" placeholder="Your Name" aria-label="Your Name" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-          <input type="email" placeholder="Your Email" aria-label="Your Email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
-          <textarea rows="5" placeholder="Your Message" aria-label="Your Message" required value={form.message} onChange={(event) => setForm({ ...form, message: event.target.value })}></textarea>
-          <button type="submit" className="btn" disabled={sending}>{sending ? 'Sending...' : 'Send Message'}</button>
-          <div id="form-status" role="status" aria-live="polite" style={{ marginTop: 15, fontWeight: 700, textAlign: 'center', color: status.color }}>{status.text}</div>
+          <label htmlFor="contact-name">Your name</label>
+          <input id="contact-name" name="name" type="text" autoComplete="name" maxLength="100" placeholder="Your Name" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+          <label htmlFor="contact-email">Email address</label>
+          <input id="contact-email" name="email" type="email" autoComplete="email" maxLength="254" placeholder="Your Email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+          <label htmlFor="contact-message">Message</label>
+          <textarea id="contact-message" name="message" rows="5" minLength="10" maxLength="3000" placeholder="Tell me how I can help..." required value={form.message} onChange={(event) => setForm({ ...form, message: event.target.value })}></textarea>
+          <span className="contact-message-count">{form.message.length}/3000 characters</span>
+          <button type="submit" className="btn" disabled={sending}>{sending ? <><i className="fas fa-spinner fa-spin" aria-hidden="true" /> Sending...</> : <>Send Message <i className="fas fa-paper-plane" aria-hidden="true" /></>}</button>
+          <div id="form-status" className={status.error ? 'contact-status error' : 'contact-status'} role="status" aria-live="polite">{status.text}</div>
         </form>
       </div>
       <div className="card" style={{ marginTop: 24 }}>
@@ -703,11 +732,9 @@ function ContactPage() {
 
 const socialStyle = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--accent)', textDecoration: 'none', padding: '14px 18px', background: 'var(--bg-soft)', borderRadius: 12, border: '1.5px solid var(--border)', fontWeight: 700, fontSize: '0.92rem', transition: 'all 0.2s ease' };
 
-function DocumentActionButtons({ documentId, onPreview, onDownload, primary = false, previewOpen = false }) {
+function DocumentActionButtons({ documentId, onPreview, onDownload, primary = false }) {
   return <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-start', marginBottom: 20 }}>
-    <button className={`doc-card-button ${primary ? 'doc-btn-primary' : 'doc-btn-outline'}`} type="button" aria-expanded={previewOpen} onClick={() => onPreview(documentId)}>
-      {previewOpen ? <><i className="fas fa-eye-slash"></i>Hide document</> : <><i className="fas fa-eye"></i>View full document</>}
-    </button>
+    <button className={`doc-card-button ${primary ? 'doc-btn-primary' : 'doc-btn-outline'}`} type="button" onClick={() => onPreview(documentId)}><i className="fas fa-eye" aria-hidden="true"></i>View</button>
     <button className="doc-card-button doc-btn-outline" type="button" onClick={() => onDownload(documentId)}><i className="fas fa-download"></i>Download</button>
   </div>;
 }
@@ -725,17 +752,12 @@ function DownloadModal({ requestedDocumentId, onClose }) {
   const [status, setStatus] = useState('');
   const [success, setSuccess] = useState(false);
   const [busy, setBusy] = useState('');
-  const [smsUnavailable, setSmsUnavailable] = useState(false);
   const nameRef = useRef(null);
   const emailRef = useRef(null);
   const codeRef = useRef(null);
   const lastFocused = useRef(null);
   const downloadLink = useRef(null);
   const emailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim());
-  const phoneValid = /^\+[1-9]\d{7,14}$/.test(phone.trim());
-  const hasEmail = Boolean(email.trim());
-  const hasPhone = Boolean(phone.trim());
-  const bothContacts = hasEmail && hasPhone;
 
   const reset = useCallback(() => {
     setName('');
@@ -749,7 +771,6 @@ function DownloadModal({ requestedDocumentId, onClose }) {
     setAuthorization(null);
     setStatus('');
     setSuccess(false);
-    setSmsUnavailable(false);
     setBusy('');
   }, []);
   const close = useCallback(() => {
@@ -771,11 +792,15 @@ function DownloadModal({ requestedDocumentId, onClose }) {
   }, [close, requestedDocumentId]);
   const sendCode = async (selectedChannel) => {
     if (name.trim().length < 2 || name.trim().length > 100 || reason.trim().length < 10 || reason.length > 1000 || !consent) {
-      setStatus('Please complete your name, reason, and consent before requesting a code.');
+      setStatus('Please complete your name, phone number, reason, and consent before requesting a code.');
       return;
     }
-    if (selectedChannel === 'email' ? !emailValid : !phoneValid) {
-      setStatus(selectedChannel === 'email' ? 'Enter a valid email address.' : 'Enter a valid phone number, including its country code.');
+    if (!/^[+\d][\d\s().-]{6,29}$/.test(phone.trim())) {
+      setStatus('Enter a valid phone number (7 to 30 characters).');
+      return;
+    }
+    if (!emailValid) {
+      setStatus('Enter a valid email address.');
       return;
     }
     setBusy(selectedChannel);
@@ -784,7 +809,7 @@ function DownloadModal({ requestedDocumentId, onClose }) {
       const response = await apiFetch('/downloads/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentId: requestedDocumentId, name: name.trim(), email: email.trim(), phone: phone.trim(), reason: reason.trim(), channel: selectedChannel, consent })
+        body: JSON.stringify({ documentId: requestedDocumentId, name: name.trim(), email: email.trim(), phone: phone.trim(), reason: reason.trim(), channel: 'email', consent })
       });
       const result = await response.json();
       if (!response.ok) {
@@ -793,13 +818,13 @@ function DownloadModal({ requestedDocumentId, onClose }) {
         throw error;
       }
       setChallengeId(result.challengeId);
-      setChannel(selectedChannel);
-      setStatus(`A code was sent ${selectedChannel === 'email' ? 'to' : 'by SMS to'} ${result.recipientPreview}. Enter the real six-digit code from that ${selectedChannel === 'email' ? 'email' : 'text message'} below.`);
+      setChannel('email');
+      setCode('');
+      setStatus(`A code was sent to ${result.recipientPreview}. Enter the six-digit code from that email below.`);
       window.requestAnimationFrame(() => codeRef.current?.focus());
     } catch (error) {
       console.error(`Could not send the ${selectedChannel} verification code:`, error);
       setStatus(error.message || 'No verification code was sent. Please check your contact details and try again.');
-      if (error.status === 503) setSmsUnavailable(true);
     } finally {
       setBusy('');
     }
@@ -819,9 +844,9 @@ function DownloadModal({ requestedDocumentId, onClose }) {
       });
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || 'Could not verify the code.');
-      setAuthorization({ token: result.downloadToken, filename: result.filename });
+      setAuthorization({ token: result.downloadToken, filename: result.filename, requestId: result.downloadRequestId });
       setSuccess(true);
-      setStatus(`Your ${channel === 'email' ? 'email address' : 'phone number'} is verified. Continue when you’re ready.`);
+      setStatus('Your email address is verified. Continue when you’re ready.');
     } catch (error) {
       console.error('Could not verify the download code:', error);
       setStatus(error.message || 'Could not verify the code. Please try again.');
@@ -853,12 +878,18 @@ function DownloadModal({ requestedDocumentId, onClose }) {
       window.setTimeout(() => { onClose(); reset(); }, 1100);
     } catch (error) {
       console.error('Could not download the authorized document:', error);
+      if (authorization?.token) {
+        apiFetch('/downloads/file-failed', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: authorization.token })
+        }).catch((reportError) => console.error('Could not record the failed download attempt:', reportError));
+      }
       setStatus(error.message || 'Could not open the document. Please try again.');
     } finally {
       setBusy('');
     }
   };
-  const codeActionsVisible = !challengeId && !bothContacts && (hasEmail || hasPhone);
+  const codeActionsVisible = !challengeId && Boolean(email.trim());
   return (
     <div id="download-request-modal" className="download-modal" hidden={!requestedDocumentId}>
       <a ref={downloadLink} hidden aria-hidden="true"></a>
@@ -868,19 +899,17 @@ function DownloadModal({ requestedDocumentId, onClose }) {
         <div className="download-dialog-icon"><i className="fas fa-file-arrow-down"></i></div>
         <p className="download-dialog-kicker">DOCUMENT REQUEST</p>
         <h2 id="download-dialog-title">Get your document</h2>
-        <p className="download-dialog-copy">Enter your own email address or phone number. We’ll send a code to the contact you choose and verify it before the download.</p>
-        <form id="download-request-form" className="download-request-form" onSubmit={(event) => { event.preventDefault(); if (authorization) continueDownload(); else if (challengeId) verifyCode(); else sendCode(hasPhone && !hasEmail ? 'sms' : 'email'); }}>
+        <p className="download-dialog-copy">Enter your email address. We’ll send a verification code by email before the download.</p>
+        <form id="download-request-form" className="download-request-form" onSubmit={(event) => { event.preventDefault(); if (authorization) continueDownload(); else if (challengeId) verifyCode(); else sendCode('email'); }}>
           <input type="hidden" id="requested-document-id" value={requestedDocumentId || ''} readOnly />
           <div id="download-request-fields" hidden={Boolean(challengeId)}>
             <label htmlFor="download-name">Your name</label>
             <input id="download-name" name="name" type="text" autoComplete="name" minLength="2" maxLength="100" required disabled={Boolean(challengeId)} value={name} onChange={(event) => setName(event.target.value)} ref={nameRef} />
-            <label htmlFor="download-email">Email address <span>(for email verification)</span></label>
-            <input id="download-email" name="email" type="email" autoComplete="email" maxLength="254" disabled={Boolean(challengeId)} value={email} onChange={(event) => setEmail(event.target.value)} ref={emailRef} />
-            <label htmlFor="download-phone">Phone number <span>(for SMS, include country code)</span></label>
-            <input id="download-phone" name="phone" type="tel" autoComplete="tel" maxLength="30" placeholder="+250788123456" disabled={Boolean(challengeId)} value={phone} onChange={(event) => setPhone(event.target.value)} />
-            <p id="download-contact-hint" className={`download-contact-hint${bothContacts || (hasEmail && !emailValid) || (hasPhone && !phoneValid) || smsUnavailable ? ' error' : ''}`} aria-live="polite">
-              {smsUnavailable ? 'SMS or email delivery is unavailable right now. No code was sent. Check your contact details or try again later.' : bothContacts ? 'Enter either an email address or a phone number—not both.' : hasEmail && !emailValid ? 'Enter a valid email address.' : hasPhone && !phoneValid ? 'Use a valid phone number with country code, e.g. +250788123456.' : 'Enter either an email address or a phone number—not both.'}
-            </p>
+            <label htmlFor="download-email">Email address</label>
+            <input id="download-email" name="email" type="email" autoComplete="email" maxLength="254" required disabled={Boolean(challengeId)} value={email} onChange={(event) => setEmail(event.target.value)} ref={emailRef} />
+            <p id="download-contact-hint" className={`download-contact-hint${email.trim() && !emailValid ? ' error' : ''}`} aria-live="polite">{email.trim() && !emailValid ? 'Enter a valid email address.' : 'We’ll send a six-digit verification code to this address.'}</p>
+            <label htmlFor="download-phone">Phone number</label>
+            <input id="download-phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" minLength="7" maxLength="30" required disabled={Boolean(challengeId)} value={phone} onChange={(event) => setPhone(event.target.value)} />
             <label htmlFor="download-reason">Why do you need this document?</label>
             <textarea id="download-reason" name="reason" rows="2" minLength="10" maxLength="1000" required disabled={Boolean(challengeId)} value={reason} onChange={(event) => setReason(event.target.value)}></textarea>
             <label className="download-consent">
@@ -889,15 +918,15 @@ function DownloadModal({ requestedDocumentId, onClose }) {
             </label>
           </div>
           <div className="download-code-actions" id="download-code-actions" hidden={!codeActionsVisible}>
-            <button className="download-submit" id="send-email-code" type="button" hidden={!hasEmail || bothContacts} disabled={!emailValid || Boolean(busy)} onClick={() => sendCode('email')}><i className="fas fa-envelope"></i> Send code to this email</button>
-            <button className="download-submit secondary" id="send-sms-code" type="button" hidden={!hasPhone || bothContacts} disabled={!phoneValid || Boolean(busy)} onClick={() => sendCode('sms')}><i className="fas fa-comment-sms"></i> Send code to this phone</button>
+            <button className="download-submit" id="send-email-code" type="button" disabled={!emailValid || Boolean(busy)} onClick={() => sendCode('email')}><i className="fas fa-envelope"></i> Send code to this email</button>
           </div>
           <div id="download-verification-fields" hidden={!challengeId}>
             <label htmlFor="download-verification-code">Verification code <span id="verification-channel-hint">{channel ? `sent to your ${channel}` : ''}</span></label>
             <input id="download-verification-code" name="verificationCode" type="text" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9]{6}" minLength="6" maxLength="6" required={Boolean(challengeId)} disabled={Boolean(authorization)} value={code} onChange={(event) => setCode(event.target.value)} ref={codeRef} />
             <div className="download-code-actions">
               {!authorization && <button className="download-submit" id="verify-download-code" type="button" disabled={Boolean(busy)} onClick={verifyCode}>{busy === 'verify' ? 'Verifying…' : 'Verify code'}</button>}
-              {!authorization && <button className="download-change-email" id="download-change-email" type="button" onClick={() => { setChallengeId(''); setCode(''); setAuthorization(null); setStatus('Update your email or phone number, then request another code.'); setSuccess(false); window.requestAnimationFrame(() => emailRef.current?.focus()); }}>Change contact or resend</button>}
+              {!authorization && <button className="download-change-email" id="download-resend-code" type="button" disabled={Boolean(busy)} onClick={() => sendCode('email')}>{busy === 'email' ? 'Sending…' : 'Resend code'}</button>}
+              {!authorization && <button className="download-change-email" id="download-change-email" type="button" onClick={() => { setChallengeId(''); setCode(''); setAuthorization(null); setStatus('Update your email address, then request another code.'); setSuccess(false); window.requestAnimationFrame(() => emailRef.current?.focus()); }}>Change email address</button>}
             </div>
           </div>
           <p id="download-form-status" className={`download-form-status${success ? ' success' : ''}`} aria-live="polite">{status}</p>
@@ -912,11 +941,10 @@ function DocumentsPage() {
   const [documents, setDocuments] = useState([]);
   const [feedback, setFeedback] = useState('');
   const [previews, setPreviews] = useState({});
+  const [activePreviewDocumentId, setActivePreviewDocumentId] = useState('');
   const [loading, setLoading] = useState(true);
   const [requestedDocumentId, setRequestedDocumentId] = useState('');
-  const [certificatesExpanded, setCertificatesExpanded] = useState(false);
   const previewUrls = useRef(new Map());
-  const previewPanels = useRef(new Map());
   const openDownload = (documentId) => setRequestedDocumentId(documentId);
   useEffect(() => {
     let active = true;
@@ -940,39 +968,15 @@ function DocumentsPage() {
   const cv = cvList[0] || documents.find((item) => item.documentId === 'cv') || null;
   const ebc = documents.find((item) => item.documentId === 'ebc') || null;
   const certificates = documents.filter((item) => item.type === 'certificate');
-  const openFullscreen = (panel) => {
-    if (!panel || document.fullscreenElement) return;
-    const request = panel.requestFullscreen || panel.webkitRequestFullscreen || panel.msRequestFullscreen;
-    if (request) {
-      try {
-        request.call(panel)?.catch?.(() => {});
-      } catch {
-        /* Full screen is unavailable in this browser; the inline preview still works. */
-      }
-    }
-  };
-  const exitFullscreen = () => {
-    if (document.fullscreenElement) document.exitFullscreen?.();
-  };
   const showPreview = (documentId) => {
     if (previews[documentId]) {
-      exitFullscreen();
-      setPreviews((current) => {
-        const next = { ...current };
-        delete next[documentId];
-        return next;
-      });
+      setActivePreviewDocumentId(documentId);
       return;
     }
-    const openPanelFullscreen = () => window.requestAnimationFrame(() => {
-      const panel = previewPanels.current.get(documentId);
-      panel?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-      openFullscreen(panel);
-    });
     const cachedUrl = previewUrls.current.get(documentId);
     if (cachedUrl) {
-      setPreviews((current) => ({ ...current, [documentId]: `${cachedUrl}#toolbar=0` }));
-      openPanelFullscreen();
+      setPreviews((current) => ({ ...current, [documentId]: `${cachedUrl}#toolbar=1` }));
+      setActivePreviewDocumentId(documentId);
       return;
     }
     setFeedback('Loading document preview…');
@@ -984,16 +988,28 @@ function DocumentsPage() {
         }
         const url = URL.createObjectURL(await response.blob());
         previewUrls.current.set(documentId, url);
-        setPreviews((current) => ({ ...current, [documentId]: `${url}#toolbar=0` }));
+        setPreviews((current) => ({ ...current, [documentId]: `${url}#toolbar=1` }));
+        setActivePreviewDocumentId(documentId);
         setFeedback('');
-        openPanelFullscreen();
       })
       .catch((error) => {
         console.error('Could not load the document preview:', error);
         setFeedback(error.message || 'The document preview could not be loaded.');
       });
   };
-  useEffect(() => () => exitFullscreen(), []);
+  useEffect(() => {
+    if (!activePreviewDocumentId) return undefined;
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setActivePreviewDocumentId('');
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [activePreviewDocumentId]);
   const dateFormat = (date, options) => {
     if (!date) return '';
     const parsed = new Date(date);
@@ -1008,20 +1024,20 @@ function DocumentsPage() {
           <p className="doc-description">My curriculum vitae contains comprehensive information about my educational background, professional experience, technical skills, and notable achievements. All documents are regularly updated and formatted for professional review.</p>
           <div className="doc-feature-grid"><div className="doc-feature-item"><i className="fas fa-shield-alt text-accent"></i><span className="font-bold">Secure Download</span></div><div className="doc-feature-item"><i className="fas fa-clock text-accent"></i><span className="font-bold">Always Current</span></div><div className="doc-feature-item"><i className="fas fa-file-pdf text-accent"></i><span className="font-bold">PDF Format</span></div></div>
         </div>
+        <div className="cv-section-heading"><h2><i className="fas fa-book-open" aria-hidden="true"></i> Curriculum vitae</h2><span>Published CVs</span></div>
         <div className="doc-card-cv-section">
           {cvList.length ? cvList.map((cvDoc, index) => (
-          <div className="document-file-card" data-cv-card={cvDoc.documentId} key={cvDoc.documentId} style={index ? { marginTop: 20 } : undefined}>
-            <div>
+          <div className="document-file-card public-cv-card" data-cv-card={cvDoc.documentId} key={cvDoc.documentId}>
+            <div className="public-cv-content">
               <div style={{ display: 'flex', alignItems: 'center', gap: 18, marginBottom: 20 }}>
                 <div style={{ width: 56, height: 56, background: 'var(--accent-soft)', border: '1.5px solid var(--border-strong)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                  <i className="fas fa-file-pdf" style={{ color: 'var(--accent)', fontSize: '1.75rem' }}></i>
+                  <i className="fas fa-book-open" style={{ color: 'var(--accent)', fontSize: '1.75rem' }}></i>
                 </div>
-                <div>
-                  <h4 data-cv-title style={{ color: 'var(--text)', margin: '0 0 4px', fontSize: '1.3rem', fontWeight: 800 }}>{cvDoc.title || 'Curriculum Vitae'}{index === 0 && cvList.length > 1 ? ' (Latest)' : ''}</h4>
-                  <p data-cv-meta style={{ color: 'var(--accent)', fontSize: '0.9rem', margin: 0, fontWeight: 700 }}>{[cvDoc.institution, cvDoc.issuedAt ? dateFormat(`${cvDoc.issuedAt}T00:00:00`, { month: 'short', year: 'numeric' }) : ''].filter(Boolean).join(' · ') || 'Professional Resume'}</p>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <h4 data-cv-title style={{ color: 'var(--text)', margin: '0 0 12px', fontSize: '1.3rem', fontWeight: 800, overflowWrap: 'anywhere' }}>{cvDoc.title || 'Curriculum Vitae'}{index === 0 && cvList.length > 1 ? ' (Latest)' : ''}</h4>
                 </div>
               </div>
-              {cvDoc.description && <p style={{ color: 'var(--muted)', fontSize: '0.98rem', lineHeight: 1.75, marginBottom: 20 }}>{cvDoc.description}</p>}
+              <ExpandableDescription className="cv-card-description">{cvDoc.description}</ExpandableDescription>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   <span className="doc-tag"><i className="fas fa-check-circle"></i>Virus Free</span>
@@ -1030,17 +1046,18 @@ function DocumentsPage() {
                 </div>
               </div>
               <div className="public-document-actions">
-                <button className="doc-card-button doc-btn-outline" type="button" aria-expanded={Boolean(previews[cvDoc.documentId])} onClick={() => showPreview(cvDoc.documentId)}>{previews[cvDoc.documentId] ? <><i className="fas fa-eye-slash" aria-hidden="true"></i>Hide document</> : <><i className="fas fa-eye" aria-hidden="true"></i>View full document</>}</button>
+                <button className="doc-card-button doc-btn-outline" type="button" onClick={() => showPreview(cvDoc.documentId)}><i className="fas fa-eye" aria-hidden="true"></i>View</button>
                 <button className="doc-card-button doc-btn-outline" type="button" onClick={() => openDownload(cvDoc.documentId)}><i className="fas fa-download" aria-hidden="true"></i>Download</button>
               </div>
-              <div ref={(node) => { if (node) previewPanels.current.set(cvDoc.documentId, node); }} className="document-preview-panel" hidden={!previews[cvDoc.documentId]}>
-                <div className="document-preview-heading"><h3>{cvDoc.title} preview</h3></div>
-                <iframe className="document-preview-frame" title={`${cvDoc.title} preview`} src={previews[cvDoc.documentId] || undefined}></iframe>
-              </div>
-              <div style={{ borderTop: '1px solid var(--border)', paddingTop: 16, marginTop: 16 }}>
-                <p style={{ color: 'var(--faint)', fontSize: '0.84rem', margin: 0, textAlign: 'center' }}>
-                  <i className="fas fa-calendar-alt" style={{ color: 'var(--accent)', marginRight: 6 }}></i>Uploaded: <span data-cv-uploaded>{(cvDoc.createdAt || cvDoc.updatedAt) ? dateFormat(cvDoc.createdAt || cvDoc.updatedAt, { dateStyle: 'medium' }) : 'Not published yet'}</span> • <i className="fas fa-info-circle" style={{ color: 'var(--accent)', margin: '0 6px 0 10px' }}></i>File: <span data-cv-file-name>{cvDoc.filename || 'CV.pdf'}</span>
-                </p>
+              <div className="public-cv-footer">
+                <div className="cv-footer-left">
+                  <span><i className="fas fa-building" aria-hidden="true"></i> Institution: {cvDoc.institution || 'Not specified'}</span>
+                  <span><i className="fas fa-calendar-alt" aria-hidden="true"></i> Issued: {cvDoc.issuedAt ? dateFormat(`${cvDoc.issuedAt}T00:00:00`, { dateStyle: 'medium' }) : 'Not specified'}</span>
+                </div>
+                <div className="cv-footer-right">
+                  <span data-cv-uploaded><i className="fas fa-cloud-arrow-up" aria-hidden="true"></i> Uploaded: {(cvDoc.createdAt || cvDoc.updatedAt) ? dateFormat(cvDoc.createdAt || cvDoc.updatedAt, { dateStyle: 'medium' }) : 'Not published yet'}</span>
+                  <span data-cv-file-name><i className="fas fa-file" aria-hidden="true"></i> File: {cvDoc.filename || 'CV.pdf'}</span>
+                </div>
               </div>
             </div>
           </div>
@@ -1051,37 +1068,28 @@ function DocumentsPage() {
         <p id="documents-feedback" className="documents-feedback" role="status" aria-live="polite">{loading ? '' : feedback}</p>
         <div className="mt-lg text-left">
           <div className="text-center mb-lg"><h2 className="doc-title-main" style={{ fontSize: 'clamp(1.5rem, 5vw, 2.2rem)' }}><i className="fas fa-certificate text-accent mr-sm"></i> Certificates &amp; Documents</h2>
-            {(certificates.length + (ebc ? 1 : 0)) > 6 && (
-              <button className="doc-card-button doc-btn-outline" type="button" aria-expanded={certificatesExpanded} onClick={() => setCertificatesExpanded((value) => !value)}>
-                <i className={`fas ${certificatesExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`} aria-hidden="true"></i> {certificatesExpanded ? 'Collapse list' : `Expand all ${certificates.length + (ebc ? 1 : 0)} documents`}
-              </button>
-            )}
           </div>
-          <div className="grid-responsive">
+          <div className="grid-responsive document-library-scroll">
             {ebc && (
-            <div className="document-file-card" data-document-id="ebc" style={{ padding: 26 }}>
+            <div className="document-file-card public-document-card" data-document-id="ebc" style={{ padding: 26 }}>
               <div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: 16, marginBottom: 18 }}>
                   <div style={{ width: 54, height: 54, background: 'var(--accent-soft)', border: '1.5px solid var(--border-strong)', borderRadius: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
                     <i className="fas fa-file-alt" style={{ color: 'var(--accent)', fontSize: '1.6rem' }}></i>
                   </div>
-                  <div>
-                    <h4 data-document-title style={{ color: 'var(--text)', margin: '0 0 4px', fontSize: '1.25rem', fontWeight: 800 }}>{ebc.title}</h4>
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <h4 data-document-title style={{ color: 'var(--text)', margin: '0 0 12px', fontSize: '1.25rem', fontWeight: 800, overflowWrap: 'anywhere' }}>{ebc.title}</h4>
                     <p data-document-description style={{ color: 'var(--accent)', fontSize: '0.88rem', margin: 0, fontWeight: 700 }}>{ebc.description}</p>
                   </div>
                 </div>
-                <p data-document-long-description style={{ color: 'var(--muted)', fontSize: '0.94rem', lineHeight: 1.7, marginBottom: 18 }}>{ebc.longDescription || ebc.description}</p>
+                <ExpandableDescription className="public-ebc-description">{ebc.longDescription || ebc.description}</ExpandableDescription>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                     <span className="doc-tag"><i className="fas fa-file-pdf"></i>PDF</span>
                     <span className="doc-tag"><i className="fas fa-calendar"></i>{ebc.issuedAt?.slice(0, 4) || '2026'}</span>
                   </div>
                 </div>
-                <DocumentActionButtons documentId="ebc" onPreview={showPreview} onDownload={openDownload} previewOpen={Boolean(previews.ebc)} />
-                <div id="ebc-preview-panel" ref={(node) => { if (node) previewPanels.current.set('ebc', node); }} className="document-preview-panel" hidden={!previews.ebc}>
-                  <div className="document-preview-heading"><h3>{ebc.title} preview</h3></div>
-                  <iframe id="ebc-preview-frame" className="document-preview-frame" title="EBC Document preview" src={previews.ebc || undefined}></iframe>
-                </div>
+                <DocumentActionButtons documentId="ebc" onPreview={showPreview} onDownload={openDownload} />
                 <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 14 }}>
                   <p style={{ color: 'var(--faint)', fontSize: '0.82rem', margin: 0, textAlign: 'center' }}>
                     <i className="fas fa-calendar-alt" style={{ color: 'var(--accent)', marginRight: 6 }}></i>Issued: <span data-document-issued>{ebc.issuedAt?.slice(0, 4) || '2026'}</span> • <i className="fas fa-building" style={{ color: 'var(--accent)', margin: '0 6px 0 10px' }}></i><span data-document-institution>{ebc.institution || 'EBC Organization'}</span>
@@ -1090,14 +1098,14 @@ function DocumentsPage() {
               </div>
             </div>
             )}
-            {(certificatesExpanded ? certificates : certificates.slice(0, 6)).map((certificate) => <article className="document-file-card" data-certificate-card key={certificate.documentId}>
-              <div className="public-certificate-heading"><span className="public-certificate-icon"><i className="fas fa-certificate" aria-hidden="true"></i></span><div><h3>{certificate.title}</h3><span className="public-certificate-type">Professional certificate</span></div></div>
-              <p className="public-certificate-description">{certificate.description}</p>
-              <div className="public-document-actions"><button className="doc-card-button doc-btn-outline" type="button" aria-expanded={Boolean(previews[certificate.documentId])} onClick={() => showPreview(certificate.documentId)}>{previews[certificate.documentId] ? <><i className="fas fa-eye-slash" aria-hidden="true"></i>Hide document</> : <><i className="fas fa-eye" aria-hidden="true"></i>View full document</>}</button><button className="doc-card-button doc-btn-outline" type="button" onClick={() => openDownload(certificate.documentId)}><i className="fas fa-download" aria-hidden="true"></i>Download</button></div>
-              <div ref={(node) => { if (node) previewPanels.current.set(certificate.documentId, node); }} className="document-preview-panel" hidden={!previews[certificate.documentId]}><div className="document-preview-heading"><h3>{certificate.title} preview</h3></div><iframe className="document-preview-frame" title={`${certificate.title} preview`} src={previews[certificate.documentId] || undefined}></iframe></div>
-              <div className="public-certificate-meta"><span>Issued {certificate.issuedAt}</span><span>{certificate.institution}</span></div>
-              {(certificate.createdAt || certificate.updatedAt) && <p style={{ color: 'var(--faint)', fontSize: '0.78rem', margin: '8px 0 0' }}><i className="fas fa-cloud-arrow-up" aria-hidden="true" style={{ color: 'var(--accent)', marginRight: 6 }}></i>Uploaded {dateFormat(certificate.createdAt || certificate.updatedAt, { dateStyle: 'medium' })}</p>}
-              {certificate.filename && <p style={{ color: 'var(--faint)', fontSize: '0.78rem', margin: '4px 0 0' }}><i className="fas fa-file" aria-hidden="true" style={{ color: 'var(--accent)', marginRight: 6 }}></i>{certificate.filename}</p>}
+            {certificates.map((certificate) => <article className="document-file-card public-document-card" data-certificate-card key={certificate.documentId}>
+              <div className="public-certificate-heading"><span className="public-certificate-icon"><i className="fas fa-certificate" aria-hidden="true"></i></span><div className="public-certificate-title"><h3>{certificate.title}</h3><span className="public-certificate-type">Professional certificate</span></div></div>
+              <ExpandableDescription className="public-certificate-description">{certificate.description}</ExpandableDescription>
+              <div className="public-document-actions"><button className="doc-card-button doc-btn-outline" type="button" onClick={() => showPreview(certificate.documentId)}><i className="fas fa-eye" aria-hidden="true"></i>View</button><button className="doc-card-button doc-btn-outline" type="button" onClick={() => openDownload(certificate.documentId)}><i className="fas fa-download" aria-hidden="true"></i>Download</button></div>
+              <div className="public-cv-footer">
+                <div className="public-cv-meta-row"><span><i className="fas fa-building" aria-hidden="true"></i> Institution: {certificate.institution || 'Not specified'}</span><span><i className="fas fa-calendar-alt" aria-hidden="true"></i> Issued: {certificate.issuedAt ? dateFormat(`${certificate.issuedAt}T00:00:00`, { dateStyle: 'medium' }) : 'Not specified'}</span></div>
+                <div className="public-cv-meta-row"><span><i className="fas fa-cloud-arrow-up" aria-hidden="true"></i> Uploaded: {dateFormat(certificate.createdAt || certificate.updatedAt, { dateStyle: 'medium' }) || 'Not published yet'}</span><span><i className="fas fa-file" aria-hidden="true"></i> File: {certificate.filename || 'Document.pdf'}</span></div>
+              </div>
             </article>)}
             {!certificates.length && (
             <div className="document-add-slot certificate-add-slot"><span className="document-add-icon"><i className="fas fa-certificate" aria-hidden="true"></i></span><h3>No certificates added yet</h3><p>Certificates will appear here as soon as they are added.</p></div>
@@ -1106,6 +1114,10 @@ function DocumentsPage() {
         </div>
       </section>
     </InnerPage>
+    {activePreviewDocumentId && <div className="document-viewer-overlay" role="dialog" aria-modal="true" aria-label={`${documents.find((item) => item.documentId === activePreviewDocumentId)?.title || 'Document'} full-screen preview`}>
+      <button className="document-viewer-close" type="button" aria-label="Close document and return to its card" onClick={() => setActivePreviewDocumentId('')}><i className="fas fa-xmark" aria-hidden="true" /></button>
+      <iframe className="document-viewer-frame" title={`${documents.find((item) => item.documentId === activePreviewDocumentId)?.title || 'Document'} full-screen preview`} src={previews[activePreviewDocumentId]} />
+    </div>}
     <DownloadModal requestedDocumentId={requestedDocumentId} onClose={() => setRequestedDocumentId('')} />
   </>;
 }
