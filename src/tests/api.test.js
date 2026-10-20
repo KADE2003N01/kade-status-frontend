@@ -8,7 +8,7 @@ describe('resolveApiAssetUrl', () => {
 
   it('moves stale localhost image URLs to the public API when the site is deployed', async () => {
     vi.stubGlobal('window', { location: { hostname: 'portfolio.example.com' } });
-    const { resolveApiAssetUrl } = await import('./api.js');
+    const { resolveApiAssetUrl } = await import('../services/api.js');
     const path = '/api/homepage/profile-image/profile-example.jpg';
 
     expect(resolveApiAssetUrl(`http://localhost:5000${path}`))
@@ -17,7 +17,7 @@ describe('resolveApiAssetUrl', () => {
 
   it('keeps localhost image URLs for local development', async () => {
     vi.stubGlobal('window', { location: { hostname: 'localhost' } });
-    const { resolveApiAssetUrl } = await import('./api.js');
+    const { resolveApiAssetUrl } = await import('../services/api.js');
 
     expect(resolveApiAssetUrl('http://localhost:5000/api/homepage/profile-image/profile-example.jpg'))
       .toBe('http://localhost:5000/api/homepage/profile-image/profile-example.jpg');

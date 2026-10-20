@@ -9,7 +9,7 @@ import {
   HobbiesPage,
   Homepage,
   SkillsPage
-} from './PublicPages.jsx';
+} from '../pages/public/PublicPages.jsx';
 import {
   AdminDocumentsPage,
   AdminDownloadsPage,
@@ -17,9 +17,9 @@ import {
   AdminLoginPage,
   AdminOverviewPage,
   AdminProfilePage
-} from './AdminPages.jsx';
-import { API_BASE_URL, API_BASE_URLS } from './api.js';
-import GlobalStyles from './GlobalStyles.jsx';
+} from '../pages/admin/AdminPages.jsx';
+import { API_BASE_URL, API_BASE_URLS } from '../services/api.js';
+import GlobalStyles from '../styles/GlobalStyles.jsx';
 
 const publicPages = {
   'index.html': [Homepage, ''],

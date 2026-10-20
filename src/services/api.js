@@ -5,7 +5,7 @@ const localApiHost = hostname === '127.0.0.1' ? '127.0.0.1' : 'localhost';
 const localApiUrl = `http://${localApiHost}:5000/api`;
 const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
 const defaultApiUrls = isLocalHost
-  ? [localApiUrl, liveApiUrl]
+  ? [localApiUrl]
   : ['/api', liveApiUrl];
 
 export const API_BASE_URLS = [...new Set([
@@ -63,6 +63,10 @@ export async function apiFetch(path, options) {
       if (!(error instanceof TypeError) || options?.signal?.aborted) throw error;
       lastError = error;
     }
+  }
+
+  if (isLocalHost && !configuredApiUrl && lastError instanceof TypeError) {
+    throw new Error(`Cannot connect to the local backend at ${localApiUrl}. Start it from kade-status-backend with npm start.`);
   }
 
   throw lastError || new Error('The API did not return a JSON response.');

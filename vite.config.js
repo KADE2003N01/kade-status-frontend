@@ -64,7 +64,7 @@ function reactPageShell() {
   </head>
   <body>
     <div id="root"></div>
-    <script type="module" src="/src/react/main.jsx"></script>
+    <script type="module" src="/src/app/main.jsx"></script>
   </body>
 </html>`;
       }

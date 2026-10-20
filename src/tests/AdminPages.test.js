@@ -5,10 +5,10 @@ import {
     formatFieldLabel,
     responseJson,
     updateNestedValue
-} from './AdminPages.jsx';
-import { apiFetch } from './api.js';
+} from '../pages/admin/AdminPages.jsx';
+import { apiFetch } from '../services/api.js';
 
-vi.mock('./api.js', () => ({
+vi.mock('../services/api.js', () => ({
     apiFetch: vi.fn()
 }));
 

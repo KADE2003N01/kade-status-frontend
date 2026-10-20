@@ -1,6 +1,6 @@
 import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
-import { apiFetch, resolveApiAssetUrl } from './api.js';
-import TimedNotification from './TimedNotification.jsx';
+import { apiFetch, resolveApiAssetUrl } from '../../services/api.js';
+import TimedNotification from '../../components/TimedNotification.jsx';
 
 const ADMIN_LOGIN_URL = 'admin-login.html';
 const AdminSessionContext = createContext(null);
@@ -475,8 +475,11 @@ export function AdminLoginPage() {
         } catch (error) {
             await keepCheckVisible();
             console.error('Admin login request failed:', error);
-            setFeedback('The sign-in server did not respond. It may be waking up — try again in a few seconds.');
-            setLoginNotification({ message: 'The sign-in server did not respond. Try again in a few seconds.', tone: 'error' });
+            const message = error instanceof Error && error.message
+                ? error.message
+                : 'The sign-in server did not respond. It may be waking up — try again in a few seconds.';
+            setFeedback(message);
+            setLoginNotification({ message, tone: 'error' });
         } finally {
             setSubmitting(false);
         }

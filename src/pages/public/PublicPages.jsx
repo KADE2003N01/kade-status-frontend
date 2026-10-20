@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { apiFetch, resolveApiAssetUrl } from './api.js';
-import TimedNotification from './TimedNotification.jsx';
-import backgroundImageUrl from '../media/background image.jpeg';
+import { apiFetch, resolveApiAssetUrl } from '../../services/api.js';
+import TimedNotification from '../../components/TimedNotification.jsx';
+import backgroundImageUrl from '../../assets/background image.jpeg';
 
 const NAV_ITEMS = [
   ['Home', 'index.html', '../index.html'],
