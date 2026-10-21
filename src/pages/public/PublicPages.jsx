@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch, resolveApiAssetUrl } from '../../services/api.js';
-import PhoneNumberField, { isValidEastAfricanPhone } from '../../components/PhoneNumberField.jsx';
+import PhoneNumberField, { isValidInternationalPhone, parseInternationalPhone } from '../../components/PhoneNumberField.jsx';
 import LanguageSelector from '../../components/LanguageSelector.jsx';
 import { useLanguage } from '../../context/LanguageContext.jsx';
 import TimedNotification from '../../components/TimedNotification.jsx';
@@ -15,6 +15,19 @@ const NAV_ITEMS = [
   ['Documents', 'src/document.html', 'document.html'],
   ['Contact', 'src/contact.html', 'contact.html']
 ];
+
+function applyLocalizedText(content, localizedText, language) {
+  if (!content || !localizedText?.[language]) return content;
+  const result = structuredClone(content);
+  for (const [path, text] of Object.entries(localizedText[language])) {
+    if (typeof text !== 'string') continue;
+    const parts = path.split('.');
+    const key = parts.pop();
+    const parent = parts.reduce((value, part) => value?.[part], result);
+    if (parent && typeof parent[key] === 'string') parent[key] = text;
+  }
+  return result;
+}
 
 function safeUrl(value, allowContactSchemes = false) {
   if (typeof value !== 'string' || !value.trim() || /[\u0000-\u0020\\]/.test(value)) return null;
@@ -236,6 +249,7 @@ function usePublicFooter() {
         if (active && result.content) {
           setFooterContent({
             footer: result.content.footer || null,
+            localizedText: result.content.localizedText || null,
             adminName: typeof result.content.adminName === 'string' ? result.content.adminName.trim() : ''
           });
         }
@@ -246,8 +260,8 @@ function usePublicFooter() {
   return footerContent;
 }
 
-function Footer({ homepage = false, content, adminName: publishedAdminName }) {
-  const { t } = useLanguage();
+function Footer({ homepage = false, content, localizedText, adminName: publishedAdminName }) {
+  const { t, language } = useLanguage();
   const defaults = {
     brandName: 'David',
     tagline: 'Building elegant solutions through code',
@@ -281,7 +295,7 @@ function Footer({ homepage = false, content, adminName: publishedAdminName }) {
     contactHref: 'tel:+250788950833',
     adminName: 'David KWIZERA'
   };
-  const value = content ? {
+  const baseValue = content ? {
     ...defaults,
     ...content,
     quickLinks: Array.isArray(content.quickLinks) ? content.quickLinks
@@ -294,6 +308,28 @@ function Footer({ homepage = false, content, adminName: publishedAdminName }) {
       .filter((item) => item && typeof item.label === 'string' && item.label.trim() && typeof item.href === 'string' && item.href.trim())
       .map((item) => [item.label, item.href, item.icon]) : defaults.socialLinks
   } : defaults;
+  const value = applyLocalizedText({ footer: baseValue }, localizedText, language).footer;
+  const localizedFooter = {
+    ...value,
+    brandName: t(value.brandName),
+    tagline: t(value.tagline),
+    description: t(value.description),
+    quickLinksTitle: t(value.quickLinksTitle),
+    servicesTitle: t(value.servicesTitle),
+    socialTitle: t(value.socialTitle),
+    quickLinks: value.quickLinks.map(([label, href]) => [t(label), href]),
+    services: value.services.map(([label, href]) => [t(label), href]),
+    socialLinks: value.socialLinks.map(([label, href, icon]) => [t(label), href, icon]),
+    builtBy: t(value.builtBy),
+    contactLabel: t(value.contactLabel)
+  };
+  const internationalPhone = parseInternationalPhone(value.phone)?.number;
+  const whatsappHref = internationalPhone ? `https://wa.me/${internationalPhone.slice(1)}` : '';
+  const socialLinks = localizedFooter.socialLinks.map(([label, href, icon]) => [
+    label,
+    label.toLowerCase() === 'whatsapp' && whatsappHref ? whatsappHref : href,
+    icon
+  ]);
   const dynamicLink = (href) => {
     if (typeof href !== 'string' || !safeUrl(href, true)) return '#';
     const target = href.trim();
@@ -314,30 +350,30 @@ function Footer({ homepage = false, content, adminName: publishedAdminName }) {
       <div className="footer-container">
         <div className="footer-section footer-brand">
           <div className="footer-logo">{value.brandName || adminName.split(/\s+/)[0]}</div>
-          <p className="footer-tagline">{value.tagline}</p>
-          <p className="footer-description">{value.description}</p>
+          <p className="footer-tagline">{localizedFooter.tagline}</p>
+          <p className="footer-description">{localizedFooter.description}</p>
         </div>
         <div className="footer-section">
-          <h4 className="footer-section-title">{t(value.quickLinksTitle)}</h4>
-          <ul className="footer-links">{value.quickLinks.map(([label, href]) => <li key={label}><a href={dynamicLink(href)}>{t(label)}</a></li>)}</ul>
+          <h4 className="footer-section-title">{localizedFooter.quickLinksTitle}</h4>
+          <ul className="footer-links">{localizedFooter.quickLinks.map(([label, href]) => <li key={label}><a href={dynamicLink(href)}>{label}</a></li>)}</ul>
         </div>
         <div className="footer-section">
-          <h4 className="footer-section-title">{t(value.servicesTitle)}</h4>
-          <ul className="footer-links">{value.services.map(([label, href]) => <li key={label}><a href={dynamicLink(href)}>{t(label)}</a></li>)}</ul>
+          <h4 className="footer-section-title">{localizedFooter.servicesTitle}</h4>
+          <ul className="footer-links">{localizedFooter.services.map(([label, href]) => <li key={label}><a href={dynamicLink(href)}>{label}</a></li>)}</ul>
         </div>
         <div className="footer-section">
-          <h4 className="footer-section-title">{t(value.socialTitle)}</h4>
-          <div className="footer-social">{value.socialLinks.map(([label, href, icon]) => (
+          <h4 className="footer-section-title">{localizedFooter.socialTitle}</h4>
+          <div className="footer-social">{socialLinks.map(([label, href, icon]) => (
             <a key={label} href={dynamicLink(href)} target="_blank" rel="noopener noreferrer" title={label} aria-label={label}>
               <i className={/^[a-z0-9-]+(?:\s+[a-z0-9-]+)*$/i.test(icon || '') ? icon : 'fas fa-circle'} aria-hidden="true"></i>
             </a>
           ))}</div>
-          <p className="footer-contact"><i className="fas fa-envelope"></i> {value.email}<br /><i className="fas fa-phone"></i> {value.phone}</p>
+          <p className="footer-contact"><i className="fas fa-envelope"></i> {value.email}<br /><i className="fas fa-phone"></i> {internationalPhone ? <a href={`tel:${internationalPhone}`}>{value.phone}</a> : value.phone}</p>
         </div>
       </div>
       <div className="footer-bottom">
-        <p className="footer-copy">{copyright}</p>
-        <p className="footer-built">{value.builtBy} | <a href={dynamicLink(value.contactHref)}>{value.contactLabel}</a> | <a href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(footerEmail)}`} target="_blank" rel="noopener noreferrer">Email</a></p>
+        <p className="footer-copy">{t('Copyright {year} {name}. All rights reserved.', { year: new Date().getFullYear(), name: adminName })}</p>
+        <p className="footer-built">{localizedFooter.builtBy} | <a href={internationalPhone ? `tel:${internationalPhone}` : dynamicLink(value.contactHref)}>{localizedFooter.contactLabel}</a> | <a href={`https://mail.google.com/mail/?view=cm&fs=1&to=${encodeURIComponent(footerEmail)}`} target="_blank" rel="noopener noreferrer">{t('Email')}</a></p>
       </div>
     </footer>
   );
@@ -372,7 +408,7 @@ function Hero({ id, title, subtitle, intro, homepage = false, videoUrl }) {
 
 function InnerPage({ title, subtitle, intro, id, children }) {
   const { t } = useLanguage();
-  const { footer, adminName } = usePublicFooter();
+  const { footer, localizedText, adminName } = usePublicFooter();
   const [notice, dismissNotice] = usePublishedUpdateNotice();
   return (
     <>
@@ -380,13 +416,13 @@ function InnerPage({ title, subtitle, intro, id, children }) {
       <Navigation />
       <Hero id={id} title={{ text: t(title) }} subtitle={t(subtitle)} intro={t(intro)} />
       {children}
-      <Footer content={footer} adminName={adminName} />
+      <Footer content={footer} localizedText={localizedText} adminName={adminName} />
     </>
   );
 }
 
-function HomepageFooter({ content }) {
-  return <Footer homepage content={content} />;
+function HomepageFooter({ content, localizedText }) {
+  return <Footer homepage content={content} localizedText={localizedText} />;
 }
 
 const homepageFallback = {
@@ -447,6 +483,7 @@ const homepageFallback = {
 };
 
 function Homepage() {
+  const { t, language } = useLanguage();
   const [content, setContent] = useState(homepageFallback);
   const isReviewPreview = new URLSearchParams(window.location.search).has('homepagePreview');
   const [notice, dismissNotice] = usePublishedUpdateNotice(!isReviewPreview);
@@ -470,7 +507,7 @@ function Homepage() {
       .catch((error) => console.error('Could not load published landing-page content:', error));
     return () => { active = false; };
   }, [isReviewPreview]);
-  const c = { ...homepageFallback, ...content };
+  const c = applyLocalizedText({ ...homepageFallback, ...content }, content.localizedText, language);
   useEffect(() => {
     if (c.site?.title) document.title = c.site.title;
     const meta = document.querySelector('meta[name="description"]');
@@ -495,46 +532,46 @@ function Homepage() {
         <div className="home-overlay"></div>
         <div className="home-wrapper">
           <div className="home-content">
-            <p className="home-kicker"><span></span> {hero.kicker}</p>
-            <h1 className="glitch" data-text={hero.title} id="dynamic-title">{hero.title}</h1>
-            <p className="subtitle" id="homepage-subtitle">{hero.subtitle}</p>
-            <p className="intro" id="homepage-intro">{hero.intro}</p>
+            <p className="home-kicker"><span></span> {t(hero.kicker)}</p>
+            <h1 className="glitch" data-text={t(hero.title)} id="dynamic-title">{t(hero.title)}</h1>
+            <p className="subtitle" id="homepage-subtitle">{t(hero.subtitle)}</p>
+            <p className="intro" id="homepage-intro">{t(hero.intro)}</p>
             <div className="btn-group">{(hero.buttons || []).map((button) => (
               <a key={`${button.label}:${button.href}`} href={linkUrl(button.href)} className={button.style === 'outline' ? 'btn btn-outline' : 'btn'}>
-                {button.label === 'Explore my documents' && <i className="fas fa-folder-open" aria-hidden="true"></i>} {button.label}
+                {button.label === 'Explore my documents' && <i className="fas fa-folder-open" aria-hidden="true"></i>} {t(button.label)}
               </a>
             ))}</div>
-            <a className="home-contact-link" href={linkUrl(hero.contactHref)}>{hero.contactText} <span>{hero.contactLabel} <i className="fas fa-arrow-right" aria-hidden="true"></i></span></a>
+            <a className="home-contact-link" href={linkUrl(hero.contactHref)}>{t(hero.contactText)} <span>{t(hero.contactLabel)} <i className="fas fa-arrow-right" aria-hidden="true"></i></span></a>
           </div>
         </div>
       </section>
       <section className="home-intro-section" data-home-section="introduction" hidden={!introduction.visible}>
         <div className="home-intro-copy">
-          <p className="home-section-kicker">{introduction.eyebrow}</p>
-          <h2 className="section-title">{introduction.titleFirst}<br /><span>{introduction.titleSecond}</span></h2>
+          <p className="home-section-kicker">{t(introduction.eyebrow)}</p>
+          <h2 className="section-title">{t(introduction.titleFirst)}<br /><span>{t(introduction.titleSecond)}</span></h2>
         </div>
         <div className="card home-intro-card">
-          <p>{introduction.body}</p>
-          <a className="text-link" href={linkUrl(introduction.linkHref)}>{introduction.linkLabel} <i className="fas fa-arrow-right" aria-hidden="true"></i></a>
+          <p>{t(introduction.body)}</p>
+          <a className="text-link" href={linkUrl(introduction.linkHref)}>{t(introduction.linkLabel)} <i className="fas fa-arrow-right" aria-hidden="true"></i></a>
         </div>
       </section>
       <section id="home-highlights" data-home-section="highlights" hidden={!highlights.visible}>
         <div className="welcome-banner">
           <div className="welcome-banner-glow" aria-hidden="true"></div>
-          <p className="home-section-kicker">{highlights.eyebrow}</p>
-          <h2 className="welcome-banner-title">{highlights.title}</h2>
-          <p className="welcome-banner-copy">{highlights.message}</p>
+          <p className="home-section-kicker">{t(highlights.eyebrow)}</p>
+          <h2 className="welcome-banner-title">{t(highlights.title)}</h2>
+          <p className="welcome-banner-copy">{t(highlights.message)}</p>
           <div className="welcome-banner-actions">
-            <a className="btn" href={linkUrl(highlights.linkHref)}>{highlights.linkLabel} <i className="fas fa-arrow-right" aria-hidden="true"></i></a>
-            <a className="btn btn-outline" href={linkUrl(documents.buttonHref)}>{documents.buttonLabel} <i className="fas fa-folder-open" aria-hidden="true"></i></a>
+            <a className="btn" href={linkUrl(highlights.linkHref)}>{t(highlights.linkLabel)} <i className="fas fa-arrow-right" aria-hidden="true"></i></a>
+            <a className="btn btn-outline" href={linkUrl(documents.buttonHref)}>{t(documents.buttonLabel)} <i className="fas fa-folder-open" aria-hidden="true"></i></a>
           </div>
         </div>
       </section>
       <section className="home-documents-cta" data-home-section="documents" hidden={!documents.visible}>
-        <div><p className="home-section-kicker">{documents.eyebrow}</p><h2>{documents.title}</h2><p>{documents.description}</p></div>
-        <a className="btn" href={linkUrl(documents.buttonHref)}>{documents.buttonLabel} <i className="fas fa-arrow-right" aria-hidden="true"></i></a>
+        <div><p className="home-section-kicker">{t(documents.eyebrow)}</p><h2>{t(documents.title)}</h2><p>{t(documents.description)}</p></div>
+        <a className="btn" href={linkUrl(documents.buttonHref)}>{t(documents.buttonLabel)} <i className="fas fa-arrow-right" aria-hidden="true"></i></a>
       </section>
-      <HomepageFooter content={footer} />
+      <HomepageFooter content={footer} localizedText={c.localizedText} />
     </>
   );
 }
@@ -678,6 +715,8 @@ function HobbiesPage() {
 
 function ContactPage() {
   const { t } = useLanguage();
+  const { footer } = usePublicFooter();
+  const contactPhone = parseInternationalPhone(footer?.phone)?.number;
   const [form, setForm] = useState({ name: '', email: '', phone: '', message: '' });
   const [status, setStatus] = useState({ text: '', color: '' });
   const [sending, setSending] = useState(false);
@@ -688,8 +727,8 @@ function ContactPage() {
       setStatus({ text: t('Enter a name (2 to 100 characters) and a message (10 to 3,000 characters).'), error: true });
       return;
     }
-    if (!isValidEastAfricanPhone(payload.phone)) {
-      setStatus({ text: t('Choose an East African country and enter a valid phone number.'), error: true });
+    if (!isValidInternationalPhone(payload.phone)) {
+      setStatus({ text: t('Choose a country and enter a valid phone number.'), error: true });
       return;
     }
     setSending(true);
@@ -701,7 +740,7 @@ function ContactPage() {
       });
       const result = await response.json();
       if (response.ok && result.success) {
-        setStatus({ text: result.message || t('Your message was delivered.'), error: false });
+        setStatus({ text: t(result.message || 'Your message was delivered.'), error: false });
         setForm({ name: '', email: '', phone: '', message: '' });
       } else {
         setStatus({ text: t(result.error || 'Failed to send. Please try again.'), error: true });
@@ -726,7 +765,7 @@ function ContactPage() {
           <input id="contact-email" name="email" type="email" autoComplete="email" maxLength="254" placeholder="name@example.com" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
           <label htmlFor="contact-phone">{t('Phone number')}</label>
           <PhoneNumberField id="contact-phone" value={form.phone} onChange={(phone) => setForm((current) => ({ ...current, phone }))} required describedBy="contact-phone-hint" />
-          <small id="contact-phone-hint">{t('Choose your East African country code and enter the number. This phone field does not restrict who can visit the website.')}</small>
+          <small id="contact-phone-hint">{t('Choose your country code and enter the number. This phone field does not restrict who can visit the website.')}</small>
           <label htmlFor="contact-message">{t('Message')}</label>
           <textarea id="contact-message" name="message" rows="5" minLength="10" maxLength="3000" placeholder="Describe your question, project, or opportunity..." required value={form.message} onChange={(event) => setForm({ ...form, message: event.target.value })}></textarea>
           <span className="contact-message-count">{form.message.length}/3000 characters</span>
@@ -739,7 +778,7 @@ function ContactPage() {
         <div className="grid-responsive" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
           <a href="https://github.com/KADE2003N01/kade-status" target="_blank" rel="noopener noreferrer" style={socialStyle}><i className="fab fa-github"></i> GitHub</a>
           <a href="https://linkedin.com/in/david-kwizera" target="_blank" rel="noopener noreferrer" style={socialStyle}><i className="fab fa-linkedin"></i> LinkedIn</a>
-          <a href="https://wa.me/+250788950833" target="_blank" rel="noopener noreferrer" style={socialStyle}><i className="fab fa-whatsapp"></i> WhatsApp</a>
+          {contactPhone && <a href={`https://wa.me/${contactPhone.slice(1)}`} target="_blank" rel="noopener noreferrer" style={socialStyle}><i className="fab fa-whatsapp"></i> WhatsApp</a>}
         </div>
       </div>
       <div className="card" style={{ marginTop: 24 }}><h3 style={{ color: 'var(--accent)', marginBottom: 12, fontSize: '1.25rem', fontWeight: 800 }}>{t('Response Time')}</h3><p>📧 <strong>Email:</strong> {t('I check messages regularly and try to respond within 24 hours.')}</p><p>💬 <strong>WhatsApp/Messages:</strong> {t('For urgent matters, WhatsApp is often the quickest way to reach me.')}</p><p>🔗 <strong>LinkedIn:</strong> {t('Connect with me for professional networking and opportunities.')}</p></div>
@@ -833,12 +872,12 @@ function DownloadModal({ requestedDocumentId, onClose, mode = 'download', onPrev
       setStatus(mode === 'preview' ? 'Please agree to email verification before requesting a code.' : 'Please complete your name, phone number, reason, and consent before requesting a code.');
       return;
     }
-    if (mode !== 'preview' && !isValidEastAfricanPhone(phone)) {
-      setStatus('Choose an East African country and enter a valid phone number.');
+    if (mode !== 'preview' && !isValidInternationalPhone(phone)) {
+      setStatus(t('Choose a country and enter a valid phone number.'));
       return;
     }
     if (!emailValid) {
-      setStatus('Enter a valid email address.');
+      setStatus(t('Enter a valid email address.'));
       return;
     }
     setBusy(selectedChannel);
@@ -858,11 +897,11 @@ function DownloadModal({ requestedDocumentId, onClose, mode = 'download', onPrev
       setChallengeId(result.challengeId);
       setChannel('email');
       setCode('');
-      setStatus(`A code was sent to ${result.recipientPreview}. Enter the six-digit code from that email below.`);
+      setStatus(t('A code was sent to {recipient}. Enter the six-digit code from that email below.', { recipient: result.recipientPreview }));
       window.requestAnimationFrame(() => codeRef.current?.focus());
     } catch (error) {
       console.error(`Could not send the ${selectedChannel} verification code:`, error);
-      setStatus(error.message || 'No verification code was sent. Please check your contact details and try again.');
+      setStatus(t(error.message || 'No verification code was sent. Please check your contact details and try again.'));
     } finally {
       setBusy('');
     }
@@ -952,7 +991,7 @@ function DownloadModal({ requestedDocumentId, onClose, mode = 'download', onPrev
             <input id="download-name" name="name" type="text" autoComplete="name" minLength="2" maxLength="100" required={mode !== 'preview'} disabled={Boolean(challengeId) || mode === 'preview'} hidden={mode === 'preview'} value={name} onChange={(event) => setName(event.target.value)} ref={nameRef} />
             <label htmlFor="download-email">{t('Email address')}</label>
             <input id="download-email" name="email" type="email" autoComplete="email" maxLength="254" required disabled={Boolean(challengeId)} value={email} onChange={(event) => setEmail(event.target.value)} ref={emailRef} />
-            <p id="download-contact-hint" className={`download-contact-hint${email.trim() && !emailValid ? ' error' : ''}`} aria-live="polite">{email.trim() && !emailValid ? 'Enter a valid email address.' : 'We’ll send a six-digit verification code to this address.'}</p>
+            <p id="download-contact-hint" className={`download-contact-hint${email.trim() && !emailValid ? ' error' : ''}`} aria-live="polite">{email.trim() && !emailValid ? t('Enter a valid email address.') : t('We’ll send a six-digit verification code to this address.')}</p>
             <label htmlFor="download-phone" hidden={mode === 'preview'}>{t('Phone number')}</label>
             <PhoneNumberField id="download-phone" value={phone} onChange={setPhone} required={mode !== 'preview'} disabled={Boolean(challengeId) || mode === 'preview'} hidden={mode === 'preview'} />
             <label htmlFor="download-reason" hidden={mode === 'preview'}>{t('Why do you need this document?')}</label>
@@ -983,6 +1022,7 @@ function DownloadModal({ requestedDocumentId, onClose, mode = 'download', onPrev
 }
 
 function DocumentsPage() {
+  const { language } = useLanguage();
   const [documents, setDocuments] = useState([]);
   const [feedback, setFeedback] = useState('');
   const [previews, setPreviews] = useState({});
@@ -1050,7 +1090,7 @@ function DocumentsPage() {
   const dateFormat = (date, options) => {
     if (!date) return '';
     const parsed = new Date(date);
-    return Number.isNaN(parsed.getTime()) ? '' : new Intl.DateTimeFormat(undefined, options).format(parsed);
+    return Number.isNaN(parsed.getTime()) ? '' : new Intl.DateTimeFormat(language, options).format(parsed);
   };
   return <>
     <InnerPage title="Documents" id="others" subtitle="CV • Files • Resources" intro="Access my CV, portfolio documents, and other important files.">

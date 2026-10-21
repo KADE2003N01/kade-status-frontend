@@ -2,8 +2,8 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { apiFetch, resolveApiAssetUrl } from '../../services/api.js';
 import TimedNotification from '../../components/TimedNotification.jsx';
 import LanguageSelector from '../../components/LanguageSelector.jsx';
-import PhoneNumberField, { isValidEastAfricanPhone } from '../../components/PhoneNumberField.jsx';
-import { useLanguage } from '../../context/LanguageContext.jsx';
+import PhoneNumberField, { isValidInternationalPhone } from '../../components/PhoneNumberField.jsx';
+import { getTranslation, hasTranslation, useLanguage } from '../../context/LanguageContext.jsx';
 
 const ADMIN_LOGIN_URL = 'admin-login.html';
 const AdminSessionContext = createContext(null);
@@ -107,7 +107,7 @@ export function formatFieldLabel(key) {
 function formatDateTime(value, includeSeconds = false) {
     const date = new Date(value);
     if (Number.isNaN(date.getTime())) return 'Date unavailable';
-    return new Intl.DateTimeFormat(undefined, {
+    return new Intl.DateTimeFormat(document.documentElement.lang || 'en', {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
@@ -602,7 +602,7 @@ function OverviewContentPage() {
     const [documents, setDocuments] = useState([]);
     const [documentsError, setDocumentsError] = useState('');
     const now = useAdminClock();
-    const today = new Intl.DateTimeFormat(undefined, {
+    const today = new Intl.DateTimeFormat(document.documentElement.lang || 'en', {
         weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
     }).format(now);
 
@@ -654,6 +654,7 @@ function OverviewContent({ today, documents = [], documentsError }) {
     );
 }
 export function AdminDownloadsPage() {
+    const { t } = useLanguage();
     return <AdminPage active="downloads"><DownloadsContent /></AdminPage>;
 }
 
@@ -670,6 +671,7 @@ function DownloadReason({ text }) {
 }
 
 function DownloadsContent() {
+    const { t } = useLanguage();
     const [search, setSearch] = useState('');
     const [actionError, setActionError] = useState('');
     const [deletingId, setDeletingId] = useState('');
@@ -682,12 +684,12 @@ function DownloadsContent() {
         );
     }, [downloads, search]);
     const now = useAdminClock();
-    const today = new Intl.DateTimeFormat(undefined, {
+    const today = new Intl.DateTimeFormat(document.documentElement.lang || 'en', {
         weekday: 'short', month: 'short', day: 'numeric', year: 'numeric'
     }).format(now);
 
     async function deleteDownload(item) {
-        if (!window.confirm('Delete this visitor download request? This cannot be undone.')) return;
+        if (!window.confirm(t('Delete this visitor download request? This cannot be undone.'))) return;
         setActionError('');
         setDeletingId(item.id);
         try {
@@ -766,11 +768,52 @@ export function updateNestedValue(target, path, value) {
     return copy;
 }
 
+function collectHomepageTextFields(value, prefix = '', fields = []) {
+    if (!value || typeof value !== 'object') return fields;
+    for (const [key, item] of Object.entries(value)) {
+        if (['localizedText', 'adminName', 'adminNameCustom', 'brandName', 'name', 'copyright'].includes(key)) continue;
+        const path = prefix ? `${prefix}.${key}` : key;
+        if (typeof item === 'string') {
+            if (!/(?:href|url|phone|email|icon|image|video|filename)$/i.test(key)) fields.push({ path, label: formatFieldLabel(key), source: item });
+        } else if (item && typeof item === 'object') collectHomepageTextFields(item, path, fields);
+    }
+    return fields;
+}
+
+function missingHomepageTranslations(content) {
+    const fields = collectHomepageTextFields(content);
+    return ['fr', 'sw'].flatMap((language) => fields.filter(({ path, source }) => {
+        if (!source.trim()) return false;
+        const translations = content.localizedText?.[language] || {};
+        if (Object.hasOwn(translations, path)) return !translations[path].trim();
+        return !hasTranslation(source, language);
+    }).map(({ path }) => `${language}:${path}`));
+}
+
+function LocalizedHomepageFields({ content, language, onChange }) {
+    const { t } = useLanguage();
+    const fields = collectHomepageTextFields(content);
+    const translations = content?.localizedText?.[language] || {};
+    if (!fields.length) return <p>{t('Load the homepage content before adding translations.')}</p>;
+    return <div className="localized-homepage-fields">
+        <p className="panel-description">{t('Add a French and Kiswahili version for each text field. Existing translations from the language catalog are prefilled where available.')}</p>
+        {fields.map(({ path, label, source }) => {
+            const value = Object.hasOwn(translations, path) ? translations[path] : getTranslation(source, language);
+            return <div className="homepage-editor-field" key={path}>
+                <label htmlFor={`localized-${language}-${path.replace(/[^a-z0-9]+/gi, '-')}`}>{t(label)}</label>
+                <small className="localized-homepage-source">{source || t('This field is empty in English.')}</small>
+                <textarea id={`localized-${language}-${path.replace(/[^a-z0-9]+/gi, '-')}`} rows={source.length > 120 ? 4 : 2} maxLength={2000} value={value} onChange={(event) => onChange(path, event.target.value)} />
+                {!Object.hasOwn(translations, path) && value === source && source && <small className="form-feedback error">{t('No catalog translation yet. Add a translation here to avoid English appearing in this language.')}</small>}
+            </div>;
+        })}
+    </div>;
+}
+
 function HomepageFields({ content, schema, onChange }) {
     const { t } = useLanguage();
     if (!content) return null;
     return Object.entries(content).map(([section, fields]) => (
-        section === 'adminName' ? (
+        section === 'localizedText' || section === 'adminNameCustom' ? null : section === 'adminName' ? (
             <fieldset className="homepage-editor-section" key={section}>
                 <legend>Footer administrator name</legend>
                 <div className="homepage-editor-field">
@@ -852,6 +895,8 @@ export function AdminHomepagePage() {
 }
 
 function HomepageContent() {
+    const { t } = useLanguage();
+    const [editingLanguage, setEditingLanguage] = useState('en');
     const [content, setContent] = useState(null);
     const [originalContent, setOriginalContent] = useState(null);
     const [loadingError, setLoadingError] = useState('');
@@ -867,8 +912,9 @@ function HomepageContent() {
             .then((response) => responseJson(response, 'Could not load homepage content.'))
             .then((result) => {
                 if (active) {
-                    setContent(result.content);
-                    setOriginalContent(result.content);
+                    const content = { ...result.content, localizedText: result.content.localizedText || { fr: {}, sw: {} } };
+                    setContent(content);
+                    setOriginalContent(content);
                 }
             })
             .catch((error) => {
@@ -883,6 +929,17 @@ function HomepageContent() {
 
     function handleFieldChange(path, value) {
         setContent((current) => updateNestedValue(current, path, value));
+        setFeedback({ message: '', error: false });
+    }
+
+    function handleLocalizedFieldChange(path, value) {
+        setContent((current) => ({
+            ...current,
+            localizedText: {
+                ...(current.localizedText || { fr: {}, sw: {} }),
+                [editingLanguage]: { ...(current.localizedText?.[editingLanguage] || {}), [path]: value }
+            }
+        }));
         setFeedback({ message: '', error: false });
     }
 
@@ -906,8 +963,8 @@ function HomepageContent() {
         event.preventDefault();
         try {
             const draft = prepareHomepageContent();
-            if (draft.footer?.phone && !isValidEastAfricanPhone(draft.footer.phone)) {
-                throw new Error('Enter a valid East African phone number with its country code before reviewing.');
+            if (draft.footer?.phone && !isValidInternationalPhone(draft.footer.phone)) {
+                throw new Error(t('Enter a valid international phone number with its country calling code before reviewing.'));
             }
             localStorage.setItem('kade-homepage-review-draft', JSON.stringify(draft));
             setReviewDraft(draft);
@@ -922,6 +979,13 @@ function HomepageContent() {
     }
 
     async function publishHomepage() {
+        const missingTranslations = missingHomepageTranslations(reviewDraft || content || {});
+        if (missingTranslations.length) {
+            const message = t('Complete both French and Kiswahili translations before publishing. Remaining fields: {count}.', { count: missingTranslations.length });
+            setFeedback({ message, error: true });
+            notifyAdmin(message, 'error');
+            return;
+        }
         setSaving(true);
         setFeedback({ message: '', error: false });
         try {
@@ -977,7 +1041,7 @@ function HomepageContent() {
     }
 
     async function resetHomepage() {
-        if (!window.confirm('Restore the default landing-page content for all visitors?')) return;
+        if (!window.confirm(t('Restore the default landing-page content for all visitors?'))) return;
         setResetting(true);
         setFeedback({ message: '', error: false });
         try {
@@ -995,7 +1059,7 @@ function HomepageContent() {
     }
 
     const now = useAdminClock();
-    const today = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(now);
+    const today = new Intl.DateTimeFormat(document.documentElement.lang || 'en', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(now);
     const publishedProfileImage = typeof content?.brand?.imageUrl === 'string'
         && !content.brand.imageUrl.includes('media/')
         ? resolveApiAssetUrl(content.brand.imageUrl)
@@ -1012,15 +1076,18 @@ function HomepageContent() {
                         </div>
                         {loadingError && <p className="form-feedback error" role="status">{loadingError}</p>}
                         {feedback.message && !reviewing && <p className={`homepage-publish-toast${feedback.error ? ' error' : ''}`} role="status" aria-live="polite"><i className={`fas ${feedback.error ? 'fa-circle-exclamation' : 'fa-circle-check'}`} aria-hidden="true" /> {feedback.message}</p>}
+                        <div className="homepage-language-tabs" role="tablist" aria-label="Homepage content language">
+                            {['en', 'fr', 'sw'].map((language) => <button key={language} type="button" role="tab" aria-selected={editingLanguage === language} className={editingLanguage === language ? 'active' : ''} onClick={() => setEditingLanguage(language)}>{language === 'en' ? 'English' : language === 'fr' ? 'Français' : 'Kiswahili'}</button>)}
+                        </div>
                         <form className="admin-form" noValidate onSubmit={saveHomepage}>
-                            <div className="homepage-editor-fields"><HomepageFields content={content} schema={originalContent} onChange={handleFieldChange} /></div>
+                            <div className="homepage-editor-fields">{editingLanguage === 'en' ? <HomepageFields content={content} schema={originalContent} onChange={handleFieldChange} /> : <LocalizedHomepageFields content={content} language={editingLanguage} onChange={handleLocalizedFieldChange} />}</div>
                             <div className="form-actions"><button className="admin-button primary" type="submit" disabled={!content || saving}><i className="fas fa-eye" aria-hidden="true" /> Save &amp; review</button><button className="admin-button quiet" id="reset-homepage" type="button" disabled={resetting} onClick={resetHomepage}>Restore defaults</button></div>
                             <p className={`form-feedback${feedback.error ? ' error' : ''}`} aria-live="polite">{feedback.message}</p>
                         </form>
                     </section>
                     {reviewing && <div className="homepage-review-overlay" role="dialog" aria-modal="true" aria-label="Review landing page">
                         <div className="homepage-review-toolbar"><div><strong>Review the complete landing page</strong><span>Empty fields are allowed. Changes go live only when you publish.</span>{feedback.message && <span className={feedback.error ? 'homepage-review-error' : ''} role="status" aria-live="polite">{feedback.message}</span>}</div><div className="form-actions"><button className="admin-button quiet" type="button" onClick={() => setReviewing(false)}>Back to editing</button><button className="admin-button primary" type="button" disabled={saving} onClick={publishHomepage}><i className="fas fa-check" aria-hidden="true" /> {saving ? 'Publishing…' : 'Publish to homepage'}</button></div></div>
-                        <iframe title="Homepage review" src="../index.html?homepagePreview=1" className="homepage-review-frame" />
+                        <iframe title="Homepage review" src={`../index.html?homepagePreview=1&lang=${editingLanguage}`} className="homepage-review-frame" />
                     </div>}
             </>
     );
@@ -1149,7 +1216,7 @@ function ProfileContent() {
     const [imageVisibility, setImageVisibility] = useState('both');
     const adminProfileImage = useAdminProfileImage();
     const now = useAdminClock();
-    const today = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(now);
+    const today = new Intl.DateTimeFormat(document.documentElement.lang || 'en', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(now);
 
     useEffect(() => {
         let active = true;
@@ -1301,6 +1368,7 @@ function CvList({ cvs, onEdit, onDelete, busyId }) {
 const EMPTY_CERTIFICATE = { id: '', type: '', title: '', description: '', issuedAt: '', institution: '' };
 
 export function AdminDocumentsPage() {
+    const { t } = useLanguage();
     return <AdminPage active="documents"><DocumentsContent /></AdminPage>;
 }
 
@@ -1354,7 +1422,7 @@ function DocumentsContent() {
     const certificates = documents.filter((item) => item.type === 'certificate');
     const otherDocuments = documents.filter((item) => item.type === 'document');
     const now = useAdminClock();
-    const today = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(now);
+    const today = new Intl.DateTimeFormat(document.documentElement.lang || 'en', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(now);
 
     async function submitCv(event) {
         event.preventDefault();
@@ -1438,7 +1506,7 @@ function DocumentsContent() {
     }
 
     async function deleteDocument(item) {
-        if (!window.confirm(`Delete "${item.title}" permanently? Visitors will no longer see this document. This cannot be undone.`)) return;
+        if (!window.confirm(t('Delete "{title}" permanently? Visitors will no longer see this document. This cannot be undone.', { title: item.title }))) return;
         setBusyId(item.documentId);
         try {
             const response = await apiRequest(`/documents/${encodeURIComponent(item.documentId)}`, { method: 'DELETE' });
