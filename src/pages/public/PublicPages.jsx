@@ -1,5 +1,8 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { apiFetch, resolveApiAssetUrl } from '../../services/api.js';
+import PhoneNumberField, { isValidEastAfricanPhone } from '../../components/PhoneNumberField.jsx';
+import LanguageSelector from '../../components/LanguageSelector.jsx';
+import { useLanguage } from '../../context/LanguageContext.jsx';
 import TimedNotification from '../../components/TimedNotification.jsx';
 import backgroundImageUrl from '../../assets/background image.jpeg';
 
@@ -115,6 +118,7 @@ function useProfileImage(homepage = false) {
 }
 
 function ThemeToggle() {
+  const { t } = useLanguage();
   const [light, setLight] = useState(() => {
     try {
       return window.localStorage.getItem('theme') !== 'dark';
@@ -132,13 +136,14 @@ function ThemeToggle() {
     }
   }, [light]);
   return (
-    <button className="theme-toggle" id="theme-toggle" aria-label="Toggle light/dark mode" type="button" onClick={() => setLight((value) => !value)}>
+    <button className="theme-toggle" id="theme-toggle" aria-label={t('Toggle light/dark mode')} title={t('Toggle light/dark mode')} type="button" onClick={() => setLight((value) => !value)}>
       {light ? '🌙' : '☀️'}
     </button>
   );
 }
 
 function Navigation({ homepage = false, homepageContent }) {
+  const { t } = useLanguage();
   const [image, clearImage] = useProfileImage(homepage);
   const [open, setOpen] = useState(false);
   const navRef = useRef(null);
@@ -179,7 +184,7 @@ function Navigation({ homepage = false, homepageContent }) {
     return (
       <li key={`${label}:${href}`}>
         <a className={active ? 'active' : undefined} aria-current={active ? 'page' : undefined} href={link} target={isOffSite ? '_blank' : undefined} rel={isOffSite ? 'noopener noreferrer' : undefined} onClick={closeMenu}>
-          {label}
+          {t(label)}
         </a>
       </li>
     );
@@ -201,8 +206,9 @@ function Navigation({ homepage = false, homepageContent }) {
       </ul>
       <div className="nav-actions">
         <a className="nav-login" href={loginHref}>
-          <i className="fas fa-lock" aria-hidden="true"></i> {homepageContent?.loginLabel || 'Login'}
+          <i className="fas fa-lock" aria-hidden="true"></i> {t(homepageContent?.loginLabel || 'Login')}
         </a>
+        <LanguageSelector compact />
         <ThemeToggle />
         <button
           className={`hamburger${open ? ' open' : ''}`}
@@ -241,6 +247,7 @@ function usePublicFooter() {
 }
 
 function Footer({ homepage = false, content, adminName: publishedAdminName }) {
+  const { t } = useLanguage();
   const defaults = {
     brandName: 'David',
     tagline: 'Building elegant solutions through code',
@@ -311,15 +318,15 @@ function Footer({ homepage = false, content, adminName: publishedAdminName }) {
           <p className="footer-description">{value.description}</p>
         </div>
         <div className="footer-section">
-          <h4 className="footer-section-title">{value.quickLinksTitle}</h4>
-          <ul className="footer-links">{value.quickLinks.map(([label, href]) => <li key={label}><a href={dynamicLink(href)}>{label}</a></li>)}</ul>
+          <h4 className="footer-section-title">{t(value.quickLinksTitle)}</h4>
+          <ul className="footer-links">{value.quickLinks.map(([label, href]) => <li key={label}><a href={dynamicLink(href)}>{t(label)}</a></li>)}</ul>
         </div>
         <div className="footer-section">
-          <h4 className="footer-section-title">{value.servicesTitle}</h4>
-          <ul className="footer-links">{value.services.map(([label, href]) => <li key={label}><a href={dynamicLink(href)}>{label}</a></li>)}</ul>
+          <h4 className="footer-section-title">{t(value.servicesTitle)}</h4>
+          <ul className="footer-links">{value.services.map(([label, href]) => <li key={label}><a href={dynamicLink(href)}>{t(label)}</a></li>)}</ul>
         </div>
         <div className="footer-section">
-          <h4 className="footer-section-title">{value.socialTitle}</h4>
+          <h4 className="footer-section-title">{t(value.socialTitle)}</h4>
           <div className="footer-social">{value.socialLinks.map(([label, href, icon]) => (
             <a key={label} href={dynamicLink(href)} target="_blank" rel="noopener noreferrer" title={label} aria-label={label}>
               <i className={/^[a-z0-9-]+(?:\s+[a-z0-9-]+)*$/i.test(icon || '') ? icon : 'fas fa-circle'} aria-hidden="true"></i>
@@ -337,23 +344,24 @@ function Footer({ homepage = false, content, adminName: publishedAdminName }) {
 }
 
 function Hero({ id, title, subtitle, intro, homepage = false, videoUrl }) {
+  const { t } = useLanguage();
   return (
     <section id={id}>
       {videoUrl && <video className="home-video" autoPlay muted loop playsInline><source src={videoUrl} type="video/mp4" /></video>}
       <div className="home-overlay"></div>
       <div className="home-wrapper">
         <div className={`home-content${homepage ? '' : ' section-content'}`}>
-          {homepage && <p className="home-kicker"><span></span> {title.kicker}</p>}
-          <h1 className="glitch" data-text={title.text} id={homepage ? 'dynamic-title' : undefined}>{title.text}</h1>
+          {homepage && <p className="home-kicker"><span></span> {t(title.kicker)}</p>}
+          <h1 className="glitch" data-text={t(title.text)} id={homepage ? 'dynamic-title' : undefined}>{t(title.text)}</h1>
           {homepage ? (
             <>
-              <p className="subtitle" id="homepage-subtitle">{subtitle}</p>
-              <p className="intro" id="homepage-intro">{intro}</p>
+              <p className="subtitle" id="homepage-subtitle">{t(subtitle)}</p>
+              <p className="intro" id="homepage-intro">{t(intro)}</p>
             </>
           ) : (
             <>
-              <p className="subtitle">{subtitle}</p>
-              <p className="intro">{intro}</p>
+              <p className="subtitle">{t(subtitle)}</p>
+              <p className="intro">{t(intro)}</p>
             </>
           )}
         </div>
@@ -363,13 +371,14 @@ function Hero({ id, title, subtitle, intro, homepage = false, videoUrl }) {
 }
 
 function InnerPage({ title, subtitle, intro, id, children }) {
+  const { t } = useLanguage();
   const { footer, adminName } = usePublicFooter();
   const [notice, dismissNotice] = usePublishedUpdateNotice();
   return (
     <>
       <TimedNotification message={notice} tone="success" onClose={dismissNotice} />
       <Navigation />
-      <Hero id={id} title={{ text: title }} subtitle={subtitle} intro={intro} />
+      <Hero id={id} title={{ text: t(title) }} subtitle={t(subtitle)} intro={t(intro)} />
       {children}
       <Footer content={footer} adminName={adminName} />
     </>
@@ -668,14 +677,19 @@ function HobbiesPage() {
 }
 
 function ContactPage() {
-  const [form, setForm] = useState({ name: '', email: '', message: '' });
+  const { t } = useLanguage();
+  const [form, setForm] = useState({ name: '', email: '', phone: '', message: '' });
   const [status, setStatus] = useState({ text: '', color: '' });
   const [sending, setSending] = useState(false);
   const submit = async (event) => {
     event.preventDefault();
-    const payload = { name: form.name.trim(), email: form.email.trim(), message: form.message.trim() };
+    const payload = { name: form.name.trim(), email: form.email.trim(), phone: form.phone.trim(), message: form.message.trim() };
     if (payload.name.length < 2 || payload.name.length > 100 || payload.message.length < 10 || payload.message.length > 3000) {
-      setStatus({ text: 'Enter a name (2–100 characters) and a message (10–3,000 characters).', error: true });
+      setStatus({ text: t('Enter a name (2 to 100 characters) and a message (10 to 3,000 characters).'), error: true });
+      return;
+    }
+    if (!isValidEastAfricanPhone(payload.phone)) {
+      setStatus({ text: t('Choose an East African country and enter a valid phone number.'), error: true });
       return;
     }
     setSending(true);
@@ -687,45 +701,48 @@ function ContactPage() {
       });
       const result = await response.json();
       if (response.ok && result.success) {
-        setStatus({ text: 'Message sent! Check your inbox for confirmation.', error: false });
-        setForm({ name: '', email: '', message: '' });
+        setStatus({ text: result.message || t('Your message was delivered.'), error: false });
+        setForm({ name: '', email: '', phone: '', message: '' });
       } else {
-        setStatus({ text: result.error || 'Failed to send. Please try again.', error: true });
+        setStatus({ text: t(result.error || 'Failed to send. Please try again.'), error: true });
       }
     } catch (error) {
       console.error('Form submission error:', error);
-      setStatus({ text: 'Connection issue. Please try again later.', error: true });
+      setStatus({ text: t('Connection issue. Please try again later.'), error: true });
     } finally {
       setSending(false);
     }
   };
   return <InnerPage title="Get In Touch" id="contact" subtitle="Contact • Connect • Collaborate" intro="Let's talk! I'm always open to new opportunities and collaborations.">
     <section>
-      <div className="card" style={{ marginBottom: 24 }}><h3 style={{ color: 'var(--accent)', marginBottom: 12, fontSize: '1.25rem', fontWeight: 800 }}>Let's Connect</h3><p>I'm always open to interesting conversations, collaboration opportunities, and new projects. Whether you have a question, want to discuss technology, or have an exciting opportunity, feel free to reach out.</p><p>I typically respond within 24 hours and would love to hear from you!</p></div>
+      <div className="card" style={{ marginBottom: 24 }}><h3 style={{ color: 'var(--accent)', marginBottom: 12, fontSize: '1.25rem', fontWeight: 800 }}>{t("Let's Connect")}</h3><p>{t("I'm always open to interesting conversations, collaboration opportunities, and new projects. Whether you have a question, want to discuss technology, or have an exciting opportunity, feel free to reach out.")}</p><p>{t('I typically respond within 24 hours and would love to hear from you!')}</p></div>
       <div className="card contact-card">
-        <h3 style={{ color: 'var(--accent)', marginBottom: 16, fontSize: '1.25rem', fontWeight: 800 }}>Send Me a Message</h3>
+        <h3 style={{ color: 'var(--accent)', marginBottom: 16, fontSize: '1.25rem', fontWeight: 800 }}>{t('Send Me a Message')}</h3>
         <p>Have a project, opportunity, or just want to say hi? Feel free to reach out — I'm always open to connecting.</p>
         <form className="contact-form" onSubmit={submit}>
-          <label htmlFor="contact-name">Your name</label>
-          <input id="contact-name" name="name" type="text" autoComplete="name" maxLength="100" placeholder="Your Name" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-          <label htmlFor="contact-email">Email address</label>
-          <input id="contact-email" name="email" type="email" autoComplete="email" maxLength="254" placeholder="Your Email" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
-          <label htmlFor="contact-message">Message</label>
-          <textarea id="contact-message" name="message" rows="5" minLength="10" maxLength="3000" placeholder="Tell me how I can help..." required value={form.message} onChange={(event) => setForm({ ...form, message: event.target.value })}></textarea>
+          <label htmlFor="contact-name">{t('Your name')}</label>
+          <input id="contact-name" name="name" type="text" autoComplete="name" maxLength="100" placeholder={t('e.g. Jane Doe')} required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+          <label htmlFor="contact-email">{t('Email address')}</label>
+          <input id="contact-email" name="email" type="email" autoComplete="email" maxLength="254" placeholder="name@example.com" required value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+          <label htmlFor="contact-phone">{t('Phone number')}</label>
+          <PhoneNumberField id="contact-phone" value={form.phone} onChange={(phone) => setForm((current) => ({ ...current, phone }))} required describedBy="contact-phone-hint" />
+          <small id="contact-phone-hint">{t('Choose your East African country code and enter the number. This phone field does not restrict who can visit the website.')}</small>
+          <label htmlFor="contact-message">{t('Message')}</label>
+          <textarea id="contact-message" name="message" rows="5" minLength="10" maxLength="3000" placeholder="Describe your question, project, or opportunity..." required value={form.message} onChange={(event) => setForm({ ...form, message: event.target.value })}></textarea>
           <span className="contact-message-count">{form.message.length}/3000 characters</span>
-          <button type="submit" className="btn" disabled={sending}>{sending ? <><i className="fas fa-spinner fa-spin" aria-hidden="true" /> Sending...</> : <>Send Message <i className="fas fa-paper-plane" aria-hidden="true" /></>}</button>
+          <button type="submit" className="btn" disabled={sending}>{sending ? <><i className="fas fa-spinner fa-spin" aria-hidden="true" /> {t('Sending...')}</> : <>{t('Send Message')} <i className="fas fa-paper-plane" aria-hidden="true" /></>}</button>
           <div id="form-status" className={status.error ? 'contact-status error' : 'contact-status'} role="status" aria-live="polite">{status.text}</div>
         </form>
       </div>
       <div className="card" style={{ marginTop: 24 }}>
-        <h3 style={{ color: 'var(--accent)', marginBottom: 16, fontSize: '1.25rem', fontWeight: 800 }}>Connect on Social Media</h3><p style={{ marginBottom: 16 }}>Find me on these platforms for more regular updates:</p>
+        <h3 style={{ color: 'var(--accent)', marginBottom: 16, fontSize: '1.25rem', fontWeight: 800 }}>{t('Connect on Social Media')}</h3><p style={{ marginBottom: 16 }}>{t('Find me on these platforms for more regular updates:')}</p>
         <div className="grid-responsive" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))' }}>
           <a href="https://github.com/KADE2003N01/kade-status" target="_blank" rel="noopener noreferrer" style={socialStyle}><i className="fab fa-github"></i> GitHub</a>
           <a href="https://linkedin.com/in/david-kwizera" target="_blank" rel="noopener noreferrer" style={socialStyle}><i className="fab fa-linkedin"></i> LinkedIn</a>
           <a href="https://wa.me/+250788950833" target="_blank" rel="noopener noreferrer" style={socialStyle}><i className="fab fa-whatsapp"></i> WhatsApp</a>
         </div>
       </div>
-      <div className="card" style={{ marginTop: 24 }}><h3 style={{ color: 'var(--accent)', marginBottom: 12, fontSize: '1.25rem', fontWeight: 800 }}>Response Time</h3><p>📧 <strong>Email:</strong> I check messages regularly and try to respond within 24 hours.</p><p>💬 <strong>WhatsApp/Messages:</strong> For urgent matters, WhatsApp is often the quickest way to reach me.</p><p>🔗 <strong>LinkedIn:</strong> Connect with me for professional networking and opportunities.</p></div>
+      <div className="card" style={{ marginTop: 24 }}><h3 style={{ color: 'var(--accent)', marginBottom: 12, fontSize: '1.25rem', fontWeight: 800 }}>{t('Response Time')}</h3><p>📧 <strong>Email:</strong> {t('I check messages regularly and try to respond within 24 hours.')}</p><p>💬 <strong>WhatsApp/Messages:</strong> {t('For urgent matters, WhatsApp is often the quickest way to reach me.')}</p><p>🔗 <strong>LinkedIn:</strong> {t('Connect with me for professional networking and opportunities.')}</p></div>
     </section>
   </InnerPage>;
 }
@@ -733,13 +750,34 @@ function ContactPage() {
 const socialStyle = { display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, color: 'var(--accent)', textDecoration: 'none', padding: '14px 18px', background: 'var(--bg-soft)', borderRadius: 12, border: '1.5px solid var(--border)', fontWeight: 700, fontSize: '0.92rem', transition: 'all 0.2s ease' };
 
 function DocumentActionButtons({ documentId, onPreview, onDownload, primary = false }) {
-  return <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'flex-start', marginBottom: 20 }}>
+  return <div className="public-document-actions" style={{ justifyContent: 'flex-start' }}>
     <button className={`doc-card-button ${primary ? 'doc-btn-primary' : 'doc-btn-outline'}`} type="button" onClick={() => onPreview(documentId)}><i className="fas fa-eye" aria-hidden="true"></i>View</button>
     <button className="doc-card-button doc-btn-outline" type="button" onClick={() => onDownload(documentId)}><i className="fas fa-download"></i>Download</button>
   </div>;
 }
 
-function DownloadModal({ requestedDocumentId, onClose }) {
+function DocumentMetadata({ document, dateFormat }) {
+  const issuedDate = document.issuedAt
+    ? dateFormat(`${document.issuedAt}T00:00:00`, { dateStyle: 'medium' }) || 'Not specified'
+    : 'Not specified';
+  const uploadDate = document.createdAt || document.updatedAt
+    ? dateFormat(document.createdAt || document.updatedAt, { dateStyle: 'medium' }) || 'Not uploaded yet'
+    : 'Not uploaded yet';
+  const isCv = document.type === 'cv';
+  const isFeatured = document.documentId === 'ebc';
+
+  return (
+    <div className="public-document-metadata" role="group" aria-label="Document details">
+      <span className="public-document-meta-item" data-document-institution={isFeatured ? true : undefined}><i className="fas fa-building" aria-hidden="true" /> Institution: {document.institution || (isFeatured ? 'EBC Organization' : 'Not specified')}</span>
+      <span className="public-document-meta-item" data-document-issued={isFeatured ? true : undefined}><i className="fas fa-calendar-alt" aria-hidden="true" /> Issued: {isFeatured && !document.issuedAt ? '2026' : issuedDate}</span>
+      <span className="public-document-meta-item" data-cv-uploaded={isCv ? true : undefined}><i className="fas fa-cloud-arrow-up" aria-hidden="true" /> Uploaded: {uploadDate}</span>
+      <span className="public-document-meta-item document-filename" data-cv-file-name={isCv ? true : undefined}><i className="fas fa-file" aria-hidden="true" /><span>File: {document.filename || (isCv ? 'CV.pdf' : 'Document.pdf')}</span></span>
+    </div>
+  );
+}
+
+function DownloadModal({ requestedDocumentId, onClose, mode = 'download', onPreviewReady }) {
+  const { t } = useLanguage();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [phone, setPhone] = useState('');
@@ -781,8 +819,8 @@ function DownloadModal({ requestedDocumentId, onClose }) {
     if (!requestedDocumentId) return;
     lastFocused.current = document.activeElement;
     reset();
-    window.requestAnimationFrame(() => nameRef.current?.focus());
-  }, [requestedDocumentId, reset]);
+    window.requestAnimationFrame(() => (mode === 'preview' ? emailRef.current : nameRef.current)?.focus());
+  }, [requestedDocumentId, reset, mode]);
   useEffect(() => {
     const handleKey = (event) => {
       if (event.key === 'Escape' && requestedDocumentId) close();
@@ -791,12 +829,12 @@ function DownloadModal({ requestedDocumentId, onClose }) {
     return () => window.removeEventListener('keydown', handleKey);
   }, [close, requestedDocumentId]);
   const sendCode = async (selectedChannel) => {
-    if (name.trim().length < 2 || name.trim().length > 100 || reason.trim().length < 10 || reason.length > 1000 || !consent) {
-      setStatus('Please complete your name, phone number, reason, and consent before requesting a code.');
+    if ((mode !== 'preview' && (name.trim().length < 2 || name.trim().length > 100 || reason.trim().length < 10 || reason.length > 1000)) || !consent) {
+      setStatus(mode === 'preview' ? 'Please agree to email verification before requesting a code.' : 'Please complete your name, phone number, reason, and consent before requesting a code.');
       return;
     }
-    if (!/^[+\d][\d\s().-]{6,29}$/.test(phone.trim())) {
-      setStatus('Enter a valid phone number (7 to 30 characters).');
+    if (mode !== 'preview' && !isValidEastAfricanPhone(phone)) {
+      setStatus('Choose an East African country and enter a valid phone number.');
       return;
     }
     if (!emailValid) {
@@ -809,7 +847,7 @@ function DownloadModal({ requestedDocumentId, onClose }) {
       const response = await apiFetch('/downloads/request', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ documentId: requestedDocumentId, name: name.trim(), email: email.trim(), phone: phone.trim(), reason: reason.trim(), channel: 'email', consent })
+        body: JSON.stringify({ documentId: requestedDocumentId, purpose: mode, name: name.trim(), email: email.trim(), phone: phone.trim(), reason: reason.trim(), channel: 'email', consent })
       });
       const result = await response.json();
       if (!response.ok) {
@@ -854,11 +892,12 @@ function DownloadModal({ requestedDocumentId, onClose }) {
       setBusy('');
     }
   };
-  const continueDownload = async () => {
+  const continueRequest = async () => {
     if (!authorization) return;
-    setBusy('download');
+    const isPreview = mode === 'preview';
+    setBusy(isPreview ? 'preview' : 'download');
     try {
-      const response = await apiFetch('/downloads/file', {
+      const response = await apiFetch(isPreview ? '/downloads/preview' : '/downloads/file', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: authorization.token })
@@ -868,6 +907,12 @@ function DownloadModal({ requestedDocumentId, onClose }) {
         throw new Error(result.error || 'Your download authorization has expired.');
       }
       const blobUrl = URL.createObjectURL(await response.blob());
+      if (isPreview) {
+        onPreviewReady?.(requestedDocumentId, blobUrl);
+        onClose();
+        reset();
+        return;
+      }
       const link = downloadLink.current;
       link.href = blobUrl;
       link.download = authorization.filename;
@@ -877,8 +922,8 @@ function DownloadModal({ requestedDocumentId, onClose }) {
       setSuccess(true);
       window.setTimeout(() => { onClose(); reset(); }, 1100);
     } catch (error) {
-      console.error('Could not download the authorized document:', error);
-      if (authorization?.token) {
+      console.error(isPreview ? 'Could not open the authorized preview:' : 'Could not download the authorized document:', error);
+      if (!isPreview && authorization?.token) {
         apiFetch('/downloads/file-failed', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: authorization.token })
@@ -896,29 +941,29 @@ function DownloadModal({ requestedDocumentId, onClose }) {
       <div className="download-modal-backdrop" data-close-download onClick={close}></div>
       <section className="download-dialog" role="dialog" aria-modal="true" aria-labelledby="download-dialog-title">
         <button className="download-modal-close" type="button" aria-label="Close form" data-close-download onClick={close}>&times;</button>
-        <div className="download-dialog-icon"><i className="fas fa-file-arrow-down"></i></div>
-        <p className="download-dialog-kicker">DOCUMENT REQUEST</p>
-        <h2 id="download-dialog-title">Get your document</h2>
-        <p className="download-dialog-copy">Enter your email address. We’ll send a verification code by email before the download.</p>
-        <form id="download-request-form" className="download-request-form" onSubmit={(event) => { event.preventDefault(); if (authorization) continueDownload(); else if (challengeId) verifyCode(); else sendCode('email'); }}>
+        <div className="download-dialog-icon"><i className={`fas ${mode === 'preview' ? 'fa-eye' : 'fa-file-arrow-down'}`}></i></div>
+        <p className="download-dialog-kicker">{t(mode === 'preview' ? 'SECURE PREVIEW' : 'DOCUMENT REQUEST')}</p>
+        <h2 id="download-dialog-title">{t(mode === 'preview' ? 'Secure document preview' : 'Get your document')}</h2>
+        <p className="download-dialog-copy">{t(mode === 'preview' ? 'Enter your email and verify it before viewing this document. Preview access is not added to the admin request list.' : 'Enter your contact details and verify your email before downloading this document. Your request is recorded for the administrator.')}</p>
+        <form id="download-request-form" className="download-request-form" onSubmit={(event) => { event.preventDefault(); if (authorization) continueRequest(); else if (challengeId) verifyCode(); else sendCode('email'); }}>
           <input type="hidden" id="requested-document-id" value={requestedDocumentId || ''} readOnly />
           <div id="download-request-fields" hidden={Boolean(challengeId)}>
-            <label htmlFor="download-name">Your name</label>
-            <input id="download-name" name="name" type="text" autoComplete="name" minLength="2" maxLength="100" required disabled={Boolean(challengeId)} value={name} onChange={(event) => setName(event.target.value)} ref={nameRef} />
-            <label htmlFor="download-email">Email address</label>
+            <label htmlFor="download-name" hidden={mode === 'preview'}>{t('Your name')}</label>
+            <input id="download-name" name="name" type="text" autoComplete="name" minLength="2" maxLength="100" required={mode !== 'preview'} disabled={Boolean(challengeId) || mode === 'preview'} hidden={mode === 'preview'} value={name} onChange={(event) => setName(event.target.value)} ref={nameRef} />
+            <label htmlFor="download-email">{t('Email address')}</label>
             <input id="download-email" name="email" type="email" autoComplete="email" maxLength="254" required disabled={Boolean(challengeId)} value={email} onChange={(event) => setEmail(event.target.value)} ref={emailRef} />
             <p id="download-contact-hint" className={`download-contact-hint${email.trim() && !emailValid ? ' error' : ''}`} aria-live="polite">{email.trim() && !emailValid ? 'Enter a valid email address.' : 'We’ll send a six-digit verification code to this address.'}</p>
-            <label htmlFor="download-phone">Phone number</label>
-            <input id="download-phone" name="phone" type="tel" autoComplete="tel" inputMode="tel" minLength="7" maxLength="30" required disabled={Boolean(challengeId)} value={phone} onChange={(event) => setPhone(event.target.value)} />
-            <label htmlFor="download-reason">Why do you need this document?</label>
-            <textarea id="download-reason" name="reason" rows="2" minLength="10" maxLength="1000" required disabled={Boolean(challengeId)} value={reason} onChange={(event) => setReason(event.target.value)}></textarea>
+            <label htmlFor="download-phone" hidden={mode === 'preview'}>{t('Phone number')}</label>
+            <PhoneNumberField id="download-phone" value={phone} onChange={setPhone} required={mode !== 'preview'} disabled={Boolean(challengeId) || mode === 'preview'} hidden={mode === 'preview'} />
+            <label htmlFor="download-reason" hidden={mode === 'preview'}>{t('Why do you need this document?')}</label>
+            <textarea id="download-reason" name="reason" rows="2" minLength="10" maxLength="1000" required={mode !== 'preview'} disabled={Boolean(challengeId) || mode === 'preview'} hidden={mode === 'preview'} value={reason} onChange={(event) => setReason(event.target.value)}></textarea>
             <label className="download-consent">
               <input id="download-consent" type="checkbox" required disabled={Boolean(challengeId)} checked={consent} onChange={(event) => setConsent(event.target.checked)} />
-              <span>I agree to have my contact details and reason saved for this request.</span>
+              <span>{mode === 'preview' ? 'I agree to use my email address to verify preview access. It will not be added to the admin request list.' : 'I agree to have my contact details and reason saved for this download request.'}</span>
             </label>
           </div>
           <div className="download-code-actions" id="download-code-actions" hidden={!codeActionsVisible}>
-            <button className="download-submit" id="send-email-code" type="button" disabled={!emailValid || Boolean(busy)} onClick={() => sendCode('email')}><i className="fas fa-envelope"></i> Send code to this email</button>
+            <button className="download-submit" id="send-email-code" type="button" disabled={!emailValid || Boolean(busy)} onClick={() => sendCode('email')}><i className="fas fa-envelope"></i> {t('Send code to this email')}</button>
           </div>
           <div id="download-verification-fields" hidden={!challengeId}>
             <label htmlFor="download-verification-code">Verification code <span id="verification-channel-hint">{channel ? `sent to your ${channel}` : ''}</span></label>
@@ -930,7 +975,7 @@ function DownloadModal({ requestedDocumentId, onClose }) {
             </div>
           </div>
           <p id="download-form-status" className={`download-form-status${success ? ' success' : ''}`} aria-live="polite">{status}</p>
-          {authorization && <button className="download-submit download-continue" id="download-submit" type="button" disabled={Boolean(busy)} onClick={continueDownload}>{busy === 'download' ? 'Opening document…' : <>Continue to download <i className="fas fa-arrow-right"></i></>}</button>}
+          {authorization && <button className="download-submit download-continue" id="download-submit" type="button" disabled={Boolean(busy)} onClick={continueRequest}>{busy === 'download' ? 'Preparing download…' : busy === 'preview' ? 'Opening preview…' : mode === 'preview' ? <>Open secure preview <i className="fas fa-arrow-right"></i></> : <>Continue to download <i className="fas fa-arrow-right"></i></>}</button>}
         </form>
       </section>
     </div>
@@ -944,8 +989,29 @@ function DocumentsPage() {
   const [activePreviewDocumentId, setActivePreviewDocumentId] = useState('');
   const [loading, setLoading] = useState(true);
   const [requestedDocumentId, setRequestedDocumentId] = useState('');
+  const [requestMode, setRequestMode] = useState('download');
   const previewUrls = useRef(new Map());
-  const openDownload = (documentId) => setRequestedDocumentId(documentId);
+  const openDownload = (documentId) => {
+    setRequestMode('download');
+    setRequestedDocumentId(documentId);
+  };
+  const showPreview = (documentId) => {
+    setFeedback('');
+    setRequestMode('preview');
+    setRequestedDocumentId(documentId);
+  };
+  const openAuthorizedPreview = useCallback((documentId, url) => {
+    previewUrls.current.set(documentId, url);
+    setPreviews({ [documentId]: `${url}#toolbar=0&navpanes=0` });
+    setActivePreviewDocumentId(documentId);
+  }, []);
+  const closePreview = useCallback(() => {
+    const url = previewUrls.current.get(activePreviewDocumentId);
+    if (url) URL.revokeObjectURL(url);
+    previewUrls.current.delete(activePreviewDocumentId);
+    setPreviews({});
+    setActivePreviewDocumentId('');
+  }, [activePreviewDocumentId]);
   useEffect(() => {
     let active = true;
     apiFetch('/documents')
@@ -968,48 +1034,19 @@ function DocumentsPage() {
   const cv = cvList[0] || documents.find((item) => item.documentId === 'cv') || null;
   const ebc = documents.find((item) => item.documentId === 'ebc') || null;
   const certificates = documents.filter((item) => item.type === 'certificate');
-  const showPreview = (documentId) => {
-    if (previews[documentId]) {
-      setActivePreviewDocumentId(documentId);
-      return;
-    }
-    const cachedUrl = previewUrls.current.get(documentId);
-    if (cachedUrl) {
-      setPreviews((current) => ({ ...current, [documentId]: `${cachedUrl}#toolbar=1` }));
-      setActivePreviewDocumentId(documentId);
-      return;
-    }
-    setFeedback('Loading document preview…');
-    apiFetch(`/downloads/preview/${encodeURIComponent(documentId)}`)
-      .then(async (response) => {
-        if (!response.ok) {
-          const result = await response.json();
-          throw new Error(result.error || 'The document preview could not be loaded.');
-        }
-        const url = URL.createObjectURL(await response.blob());
-        previewUrls.current.set(documentId, url);
-        setPreviews((current) => ({ ...current, [documentId]: `${url}#toolbar=1` }));
-        setActivePreviewDocumentId(documentId);
-        setFeedback('');
-      })
-      .catch((error) => {
-        console.error('Could not load the document preview:', error);
-        setFeedback(error.message || 'The document preview could not be loaded.');
-      });
-  };
   useEffect(() => {
     if (!activePreviewDocumentId) return undefined;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     const closeOnEscape = (event) => {
-      if (event.key === 'Escape') setActivePreviewDocumentId('');
+      if (event.key === 'Escape') closePreview();
     };
     window.addEventListener('keydown', closeOnEscape);
     return () => {
       document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', closeOnEscape);
     };
-  }, [activePreviewDocumentId]);
+  }, [activePreviewDocumentId, closePreview]);
   const dateFormat = (date, options) => {
     if (!date) return '';
     const parsed = new Date(date);
@@ -1018,7 +1055,7 @@ function DocumentsPage() {
   return <>
     <InnerPage title="Documents" id="others" subtitle="CV • Files • Resources" intro="Access my CV, portfolio documents, and other important files.">
       <section className="doc-welcome-section">
-        <div className="doc-hero-container"><h1 className="doc-hero-title">Welcome to My <span className="text-accent">Document Center</span></h1><p className="doc-hero-copy">Thank you for your interest in my professional profile. Submit your contact details before downloading my curriculum vitae and other documents.</p></div>
+        <div className="doc-hero-container"><h1 className="doc-hero-title">Welcome to My <span className="text-accent">Document Center</span></h1><p className="doc-hero-copy">Thank you for your interest in my professional profile. Submit your contact details before previewing or downloading documents.</p></div>
         <div className="doc-card-info">
           <div className="doc-info-header"><div><h2 className="doc-title-main">About These Documents</h2><p className="doc-status-tag">Professional &amp; Up-to-Date</p></div></div>
           <p className="doc-description">My curriculum vitae contains comprehensive information about my educational background, professional experience, technical skills, and notable achievements. All documents are regularly updated and formatted for professional review.</p>
@@ -1034,11 +1071,11 @@ function DocumentsPage() {
                   <i className="fas fa-book-open" style={{ color: 'var(--accent)', fontSize: '1.75rem' }}></i>
                 </div>
                 <div style={{ minWidth: 0, flex: 1 }}>
-                  <h4 data-cv-title style={{ color: 'var(--text)', margin: '0 0 12px', fontSize: '1.3rem', fontWeight: 800, overflowWrap: 'anywhere' }}>{cvDoc.title || 'Curriculum Vitae'}{index === 0 && cvList.length > 1 ? ' (Latest)' : ''}</h4>
+                  <h4 data-cv-title style={{ color: 'var(--text)', margin: '0 0 12px', fontSize: 'clamp(1rem, 2vw, 1.15rem)', fontWeight: 800, overflowWrap: 'anywhere' }}>{cvDoc.title || 'Curriculum Vitae'}{index === 0 && cvList.length > 1 ? ' (Latest)' : ''}</h4>
                 </div>
               </div>
               <ExpandableDescription className="cv-card-description">{cvDoc.description}</ExpandableDescription>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   <span className="doc-tag"><i className="fas fa-check-circle"></i>Virus Free</span>
                   <span className="doc-tag"><i className="fas fa-lock"></i>Secure</span>
@@ -1049,16 +1086,7 @@ function DocumentsPage() {
                 <button className="doc-card-button doc-btn-outline" type="button" onClick={() => showPreview(cvDoc.documentId)}><i className="fas fa-eye" aria-hidden="true"></i>View</button>
                 <button className="doc-card-button doc-btn-outline" type="button" onClick={() => openDownload(cvDoc.documentId)}><i className="fas fa-download" aria-hidden="true"></i>Download</button>
               </div>
-              <div className="public-cv-footer">
-                <div className="cv-footer-left">
-                  <span><i className="fas fa-building" aria-hidden="true"></i> Institution: {cvDoc.institution || 'Not specified'}</span>
-                  <span><i className="fas fa-calendar-alt" aria-hidden="true"></i> Issued: {cvDoc.issuedAt ? dateFormat(`${cvDoc.issuedAt}T00:00:00`, { dateStyle: 'medium' }) : 'Not specified'}</span>
-                </div>
-                <div className="cv-footer-right">
-                  <span data-cv-uploaded><i className="fas fa-cloud-arrow-up" aria-hidden="true"></i> Uploaded: {(cvDoc.createdAt || cvDoc.updatedAt) ? dateFormat(cvDoc.createdAt || cvDoc.updatedAt, { dateStyle: 'medium' }) : 'Not published yet'}</span>
-                  <span data-cv-file-name><i className="fas fa-file" aria-hidden="true"></i> File: {cvDoc.filename || 'CV.pdf'}</span>
-                </div>
-              </div>
+              <DocumentMetadata document={cvDoc} dateFormat={dateFormat} />
             </div>
           </div>
           )) : (
@@ -1067,7 +1095,7 @@ function DocumentsPage() {
         </div>
         <p id="documents-feedback" className="documents-feedback" role="status" aria-live="polite">{loading ? '' : feedback}</p>
         <div className="mt-lg text-left">
-          <div className="text-center mb-lg"><h2 className="doc-title-main" style={{ fontSize: 'clamp(1.5rem, 5vw, 2.2rem)' }}><i className="fas fa-certificate text-accent mr-sm"></i> Certificates &amp; Documents</h2>
+          <div className="text-center mb-lg"><h2 className="doc-title-main" style={{ fontSize: 'clamp(1.25rem, 3vw, 1.75rem)' }}><i className="fas fa-certificate text-accent mr-sm"></i> Certificates &amp; Documents</h2>
           </div>
           <div className="grid-responsive document-library-scroll">
             {ebc && (
@@ -1090,11 +1118,7 @@ function DocumentsPage() {
                   </div>
                 </div>
                 <DocumentActionButtons documentId="ebc" onPreview={showPreview} onDownload={openDownload} />
-                <div style={{ borderTop: '1px solid var(--border)', paddingTop: 14, marginTop: 14 }}>
-                  <p style={{ color: 'var(--faint)', fontSize: '0.82rem', margin: 0, textAlign: 'center' }}>
-                    <i className="fas fa-calendar-alt" style={{ color: 'var(--accent)', marginRight: 6 }}></i>Issued: <span data-document-issued>{ebc.issuedAt?.slice(0, 4) || '2026'}</span> • <i className="fas fa-building" style={{ color: 'var(--accent)', margin: '0 6px 0 10px' }}></i><span data-document-institution>{ebc.institution || 'EBC Organization'}</span>
-                  </p>
-                </div>
+                <DocumentMetadata document={ebc} dateFormat={dateFormat} />
               </div>
             </div>
             )}
@@ -1102,10 +1126,7 @@ function DocumentsPage() {
               <div className="public-certificate-heading"><span className="public-certificate-icon"><i className="fas fa-certificate" aria-hidden="true"></i></span><div className="public-certificate-title"><h3>{certificate.title}</h3><span className="public-certificate-type">Professional certificate</span></div></div>
               <ExpandableDescription className="public-certificate-description">{certificate.description}</ExpandableDescription>
               <div className="public-document-actions"><button className="doc-card-button doc-btn-outline" type="button" onClick={() => showPreview(certificate.documentId)}><i className="fas fa-eye" aria-hidden="true"></i>View</button><button className="doc-card-button doc-btn-outline" type="button" onClick={() => openDownload(certificate.documentId)}><i className="fas fa-download" aria-hidden="true"></i>Download</button></div>
-              <div className="public-cv-footer">
-                <div className="public-cv-meta-row"><span><i className="fas fa-building" aria-hidden="true"></i> Institution: {certificate.institution || 'Not specified'}</span><span><i className="fas fa-calendar-alt" aria-hidden="true"></i> Issued: {certificate.issuedAt ? dateFormat(`${certificate.issuedAt}T00:00:00`, { dateStyle: 'medium' }) : 'Not specified'}</span></div>
-                <div className="public-cv-meta-row"><span><i className="fas fa-cloud-arrow-up" aria-hidden="true"></i> Uploaded: {dateFormat(certificate.createdAt || certificate.updatedAt, { dateStyle: 'medium' }) || 'Not published yet'}</span><span><i className="fas fa-file" aria-hidden="true"></i> File: {certificate.filename || 'Document.pdf'}</span></div>
-              </div>
+              <DocumentMetadata document={certificate} dateFormat={dateFormat} />
             </article>)}
             {!certificates.length && (
             <div className="document-add-slot certificate-add-slot"><span className="document-add-icon"><i className="fas fa-certificate" aria-hidden="true"></i></span><h3>No certificates added yet</h3><p>Certificates will appear here as soon as they are added.</p></div>
@@ -1115,10 +1136,10 @@ function DocumentsPage() {
       </section>
     </InnerPage>
     {activePreviewDocumentId && <div className="document-viewer-overlay" role="dialog" aria-modal="true" aria-label={`${documents.find((item) => item.documentId === activePreviewDocumentId)?.title || 'Document'} full-screen preview`}>
-      <button className="document-viewer-close" type="button" aria-label="Close document and return to its card" onClick={() => setActivePreviewDocumentId('')}><i className="fas fa-xmark" aria-hidden="true" /></button>
-      <iframe className="document-viewer-frame" title={`${documents.find((item) => item.documentId === activePreviewDocumentId)?.title || 'Document'} full-screen preview`} src={previews[activePreviewDocumentId]} />
+      <button className="document-viewer-close" type="button" aria-label="Close document and return to its card" onClick={closePreview}><i className="fas fa-xmark" aria-hidden="true" /></button>
+      <iframe className="document-viewer-frame" title={`${documents.find((item) => item.documentId === activePreviewDocumentId)?.title || 'Document'} secure preview`} src={previews[activePreviewDocumentId]} onContextMenu={(event) => event.preventDefault()} />
     </div>}
-    <DownloadModal requestedDocumentId={requestedDocumentId} onClose={() => setRequestedDocumentId('')} />
+    <DownloadModal requestedDocumentId={requestedDocumentId} onClose={() => setRequestedDocumentId('')} mode={requestMode} onPreviewReady={openAuthorizedPreview} />
   </>;
 }
 

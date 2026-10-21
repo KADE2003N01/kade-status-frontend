@@ -1,10 +1,14 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { apiFetch, resolveApiAssetUrl } from '../../services/api.js';
 import TimedNotification from '../../components/TimedNotification.jsx';
+import LanguageSelector from '../../components/LanguageSelector.jsx';
+import PhoneNumberField, { isValidEastAfricanPhone } from '../../components/PhoneNumberField.jsx';
+import { useLanguage } from '../../context/LanguageContext.jsx';
 
 const ADMIN_LOGIN_URL = 'admin-login.html';
 const AdminSessionContext = createContext(null);
 const ADMIN_NOTIFICATION_EVENT = 'kade-admin-notification';
+const ADMIN_PROFILE_IMAGE_UPDATED = 'kade-admin-profile-image-updated';
 
 export { ADMIN_NOTIFICATION_EVENT };
 
@@ -223,6 +227,7 @@ function useAdminClock() {
 }
 
 function AdminThemeToggle() {
+    const { t } = useLanguage();
     const [light, setLight] = useState(() => {
         try {
             return window.localStorage.getItem('theme') !== 'dark';
@@ -240,31 +245,56 @@ function AdminThemeToggle() {
         }
     }, [light]);
     return (
-        <button className="theme-toggle admin-theme-toggle" id="admin-theme-toggle" aria-label={light ? 'Switch to dark mode' : 'Switch to light mode'} type="button" title={light ? 'Switch to dark mode' : 'Switch to light mode'} onClick={() => setLight((value) => !value)}>
+        <button className="theme-toggle admin-theme-toggle" id="admin-theme-toggle" aria-label={t(light ? 'Switch to dark mode' : 'Switch to light mode')} type="button" title={t(light ? 'Switch to dark mode' : 'Switch to light mode')} onClick={() => setLight((value) => !value)}>
             <i className={`fas ${light ? 'fa-moon' : 'fa-sun'}`} aria-hidden="true" />
-            <span>{light ? 'Dark' : 'Light'}</span>
+            <span>{light ? t('Dark') : t('Light')}</span>
         </button>
     );
 }
 
 function useAdminProfileImage() {
     const [profileImage, setProfileImage] = useState('');
-    useEffect(() => {
-        let active = true;
-        apiRequest('/homepage')
-            .then((response) => responseJson(response, 'Could not load the profile image.'))
-            .then((result) => {
-                const imageUrl = result.content?.brand?.imageUrl;
-                const validImageUrl = typeof imageUrl === 'string' && imageUrl && !imageUrl.includes('media/') ? resolveApiAssetUrl(imageUrl) : '';
-                if (active && validImageUrl) setProfileImage(validImageUrl);
-            })
-            .catch((error) => console.error('Could not load the profile image:', error));
-        return () => { active = false; };
+    const objectUrl = useRef('');
+    const loadProfileImage = useCallback(async () => {
+        try {
+            const privateResponse = await apiRequest('/homepage/admin-profile-image', { silentNotification: true });
+            if (privateResponse.ok) {
+                const nextUrl = URL.createObjectURL(await privateResponse.blob());
+                if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
+                objectUrl.current = nextUrl;
+                setProfileImage(nextUrl);
+                return;
+            }
+            if (privateResponse.status === 204) {
+                if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
+                objectUrl.current = '';
+                setProfileImage('');
+                return;
+            }
+            if (privateResponse.status !== 404) throw new Error('Could not load the admin profile image.');
+            const response = await apiRequest('/homepage', { silentNotification: true });
+            const result = await responseJson(response, 'Could not load the profile image.');
+            if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
+            objectUrl.current = '';
+            const imageUrl = result.content?.brand?.imageUrl;
+            setProfileImage(typeof imageUrl === 'string' && imageUrl && !imageUrl.includes('media/') ? resolveApiAssetUrl(imageUrl) : '');
+        } catch (error) {
+            console.error('Could not load the profile image:', error);
+        }
     }, []);
+    useEffect(() => {
+        loadProfileImage();
+        window.addEventListener(ADMIN_PROFILE_IMAGE_UPDATED, loadProfileImage);
+        return () => {
+            window.removeEventListener(ADMIN_PROFILE_IMAGE_UPDATED, loadProfileImage);
+            if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
+        };
+    }, [loadProfileImage]);
     return profileImage;
 }
 
 function AdminFrame({ session, logout, logoutError, loggingOut, active, downloadCount, children }) {
+    const { t } = useLanguage();
     const [notification, setNotification] = useState(null);
     const [publishedDocumentCount, setPublishedDocumentCount] = useState(0);
     const [adminAccountCount, setAdminAccountCount] = useState(null);
@@ -339,23 +369,24 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
                 </div>
                 <div className="admin-topbar-actions">
                     <span className="prototype-pill"><span /> ADMIN</span>
-                    <a className="admin-view-site" href="../index.html"><i className="fas fa-arrow-up-right-from-square" aria-hidden="true" /> View site</a>
+                    <a className="admin-view-site" href="../index.html"><i className="fas fa-arrow-up-right-from-square" aria-hidden="true" /> {t('View site')}</a>
                 </div>
             </header>
             <main className="admin-shell">
                 <aside className="admin-sidebar" aria-label="Admin sections">
-                    <p className="admin-nav-label">WORKSPACE</p>
+                    <p className="admin-nav-label">{t('WORKSPACE')}</p>
                     {links.map((link) => (
                         <a key={link.id} className={`admin-nav-link${active === link.id ? ' active' : ''}`} href={link.href}>
-                            <i className={`fas ${link.icon}`} aria-hidden="true" /> {link.text}
+                            <i className={`fas ${link.icon}`} aria-hidden="true" /> {t(link.text)}
                             {link.id === 'downloads' && <span className="nav-count">{downloadCount}</span>}
                             {link.id === 'documents' && <span className="nav-count" aria-label={`${publishedDocumentCount} published CVs and certificates`}>{publishedDocumentCount}</span>}
                         </a>
                     ))}
                     <AdminThemeToggle />
+                    <LanguageSelector />
                     <div className="admin-sidebar-note">
                         <i className="fas fa-circle-info" aria-hidden="true" />
-                        <p>{note}</p>
+                        <p>{t(note)}</p>
                     </div>
                     <div className="admin-account" title="Signed-in administrator profile">
                         {profileImage
@@ -365,13 +396,13 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
                     </div>
                     <a className="admin-sidebar-account-count" href="admin-accounts.html" title="View administrator accounts">
                         <i className="fas fa-users" aria-hidden="true" />
-                        <span>Admin accounts</span>
+                        <span>{t('Admin accounts')}</span>
                         <strong>{adminAccountCount === null ? '…' : adminAccountCount}</strong>
                     </a>
                     <div className="admin-sidebar-spacer" />
                     {logoutError && <p className="form-feedback error" role="status">{logoutError}</p>}
                     <button className="admin-logout" type="button" onClick={logout} disabled={loggingOut}>
-                        <i className="fas fa-right-from-bracket" aria-hidden="true" /> {loggingOut ? 'Logging out…' : 'Log out'}
+                        <i className="fas fa-right-from-bracket" aria-hidden="true" /> {loggingOut ? t('Logging out…') : t('Log out')}
                     </button>
                 </aside>
                 <div className="admin-content">
@@ -402,6 +433,7 @@ function AdminPage({ active, children }) {
 }
 
 export function AdminLoginPage() {
+    const { t } = useLanguage();
     // The name of the admin who signed in last, fetched so the login-page
     // footer can show the same name as the public site footer.
     const [loginAdminName, setLoginAdminName] = useState('David KWIZERA');
@@ -522,21 +554,22 @@ export function AdminLoginPage() {
         <main className="auth-page">
             <TimedNotification message={loginNotification?.message} tone={loginNotification?.tone} onClose={dismissLoginNotification} />
             <div className="auth-layout">
-                <a className="auth-back-link" href="../index.html"><i className="fas fa-arrow-left" aria-hidden="true" /> Back to portfolio</a>
+                <LanguageSelector />
+                <a className="auth-back-link" href="../index.html"><i className="fas fa-arrow-left" aria-hidden="true" /> {t('Back to portfolio')}</a>
                 <section className="auth-card" aria-labelledby="login-title">
                     <div className="auth-heading">
                         <span className="auth-icon"><i className="fas fa-shield-halved" aria-hidden="true" /></span>
-                        <p className="auth-eyebrow">PRIVATE WORKSPACE</p>
-                        <h1 id="login-title">Welcome back</h1>
-                        <p>Sign in with your administrator credentials to continue.</p>
+                        <p className="auth-eyebrow">{t('PRIVATE WORKSPACE')}</p>
+                        <h1 id="login-title">{t('Welcome back')}</h1>
+                        <p>{t('Sign in with your administrator credentials to continue.')}</p>
                     </div>
                     <form className="auth-form" onSubmit={submitLogin} autoComplete="off">
-                        <label htmlFor="admin-email">Email address</label>
+                        <label htmlFor="admin-email">{t('Email address')}</label>
                         <div className="auth-input-wrap">
                             <i className="far fa-envelope" aria-hidden="true" />
                             <input id="admin-email" name="email" type="email" autoComplete="off" maxLength={254} placeholder="you@example.com" required value={email} onChange={(event) => setEmail(event.target.value)} />
                         </div>
-                        <label htmlFor="admin-password">Password</label>
+                        <label htmlFor="admin-password">{t('Password')}</label>
                         <div className="auth-input-wrap">
                             <i className="fas fa-key" aria-hidden="true" />
                             <input id="admin-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" maxLength={1024} placeholder="Enter your password" required value={password} onChange={(event) => setPassword(event.target.value)} />
@@ -734,6 +767,7 @@ export function updateNestedValue(target, path, value) {
 }
 
 function HomepageFields({ content, schema, onChange }) {
+    const { t } = useLanguage();
     if (!content) return null;
     return Object.entries(content).map(([section, fields]) => (
         section === 'adminName' ? (
@@ -789,6 +823,9 @@ function HomepageFields({ content, schema, onChange }) {
                     const jsonValue = typeof value === 'string' ? value : JSON.stringify(value, null, 2);
                     return <div className="homepage-editor-field" key={key}><label htmlFor={id}>{formatFieldLabel(key)}</label><textarea id={id} rows={Math.min(Math.max(fieldType.length * 3, 5), 14)} value={jsonValue} spellCheck={false} onChange={(event) => onChange(path, event.target.value)} /><small>Edit this list as JSON. Keep each item’s fields, such as label and href.</small></div>;
                 }
+                if (key.toLowerCase() === 'phone' && typeof value === 'string') {
+                    return <div className="homepage-editor-field" key={key}><label htmlFor={id}>{t('Phone number')}</label><PhoneNumberField id={id} value={value} onChange={(phone) => onChange(path, phone)} /></div>;
+                }
                 return <div className="homepage-editor-field" key={key}><label htmlFor={id}>{formatFieldLabel(key)}</label><textarea id={id} rows={typeof value === 'string' && value.length > 120 ? 4 : 2} maxLength={2000} value={value ?? ''} onChange={(event) => onChange(path, event.target.value)} /></div>;
             })}
         </fieldset>
@@ -823,13 +860,6 @@ function HomepageContent() {
     const [reviewing, setReviewing] = useState(false);
     const [reviewDraft, setReviewDraft] = useState(null);
     const [resetting, setResetting] = useState(false);
-    const [profileFile, setProfileFile] = useState(null);
-    const [profileInputVersion, setProfileInputVersion] = useState(0);
-    const [profilePreview, setProfilePreview] = useState('');
-    const [profileFeedback, setProfileFeedback] = useState({ message: '', error: false });
-    const [uploadingProfile, setUploadingProfile] = useState(false);
-    const [profileUrl, setProfileUrl] = useState('');
-    const [savingProfileUrl, setSavingProfileUrl] = useState(false);
 
     useEffect(() => {
         let active = true;
@@ -850,16 +880,6 @@ function HomepageContent() {
             });
         return () => { active = false; };
     }, []);
-
-    useEffect(() => {
-        if (!profileFile) {
-            setProfilePreview('');
-            return undefined;
-        }
-        const url = URL.createObjectURL(profileFile);
-        setProfilePreview(url);
-        return () => URL.revokeObjectURL(url);
-    }, [profileFile]);
 
     function handleFieldChange(path, value) {
         setContent((current) => updateNestedValue(current, path, value));
@@ -886,6 +906,9 @@ function HomepageContent() {
         event.preventDefault();
         try {
             const draft = prepareHomepageContent();
+            if (draft.footer?.phone && !isValidEastAfricanPhone(draft.footer.phone)) {
+                throw new Error('Enter a valid East African phone number with its country code before reviewing.');
+            }
             localStorage.setItem('kade-homepage-review-draft', JSON.stringify(draft));
             setReviewDraft(draft);
             setReviewing(true);
@@ -971,66 +994,6 @@ function HomepageContent() {
         }
     }
 
-    async function publishProfileImage(event) {
-        event.preventDefault();
-        if (!profileFile) {
-            setProfileFeedback({ message: 'Choose a profile image first.', error: true });
-            notifyAdmin('Choose a profile image first.', 'error');
-            return;
-        }
-        setUploadingProfile(true);
-        try {
-            const response = await apiRequest('/homepage/profile-image', {
-                method: 'POST',
-                body: JSON.stringify({ image: await readFileAsDataUrl(profileFile) })
-            });
-            const result = await responseJson(response, 'Could not publish the profile image.');
-            setContent((current) => updateNestedValue(current, ['brand', 'imageUrl'], result.imageUrl));
-            setOriginalContent((current) => updateNestedValue(current, ['brand', 'imageUrl'], result.imageUrl));
-            setProfileFile(null);
-            setProfileInputVersion((version) => version + 1);
-            setProfileFeedback({ message: 'Profile image published for all visitors.', error: false });
-        } catch (error) {
-            console.error('Profile image upload failed:', error);
-            setProfileFeedback({ message: displayError(error, 'Could not publish the profile image.'), error: true });
-        } finally {
-            setUploadingProfile(false);
-        }
-    }
-
-    async function saveProfileUrl(event) {
-        event.preventDefault();
-        const url = profileUrl.trim();
-        if (!url) {
-            setProfileFeedback({ message: 'Paste an image URL first.', error: true });
-            notifyAdmin('Paste an image URL first.', 'error');
-            return;
-        }
-        setSavingProfileUrl(true);
-        try {
-            const response = await apiRequest('/homepage', {
-                method: 'PUT',
-                body: JSON.stringify({
-                    content: (() => {
-                        const updated = structuredClone(originalContent);
-                        updated.brand.imageUrl = url;
-                        return updated;
-                    })()
-                })
-            });
-            const result = await responseJson(response, 'Could not save the image URL.');
-            setContent(result.content);
-            setOriginalContent(result.content);
-            setProfileUrl('');
-            setProfileFeedback({ message: 'Profile image URL published for all visitors.', error: false });
-        } catch (error) {
-            console.error('Profile image URL save failed:', error);
-            setProfileFeedback({ message: displayError(error, 'Could not save the image URL. Use a full https:// address.'), error: true });
-        } finally {
-            setSavingProfileUrl(false);
-        }
-    }
-
     const now = useAdminClock();
     const today = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(now);
     const publishedProfileImage = typeof content?.brand?.imageUrl === 'string'
@@ -1044,32 +1007,8 @@ function HomepageContent() {
                         <div className="panel-heading"><div><p className="admin-eyebrow">LANDING PAGE CONTENT</p><h2>Edit published content</h2></div><span className="section-icon"><i className="fas fa-pen" aria-hidden="true" /></span></div>
                         <p className="panel-description">Save your edits to review the complete landing page. Visitors will see the changes after you publish them.</p>
                         <div className="profile-image-upload">
-                            <div className="profile-image-preview">{(profilePreview || publishedProfileImage) && <img src={profilePreview || publishedProfileImage} alt="Current profile image" />}</div>
-                            <div><h3>Profile image</h3><p className="panel-description">Choose a JPG, PNG, or WebP image from your device. Maximum 5 MB.</p>
-                                <form className="profile-image-form" onSubmit={publishProfileImage}>
-                                    <label className="admin-button quiet" htmlFor="profile-image-input"><i className="fas fa-image" aria-hidden="true" /> Browse image</label>
-                                    <input key={profileInputVersion} id="profile-image-input" type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(event) => {
-                                        const file = event.target.files?.[0];
-                                        if (!file) return;
-                                        if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || file.size > 5 * 1024 * 1024) {
-                                            setProfileFile(null);
-                                            setProfileInputVersion((version) => version + 1);
-                                            setProfileFeedback({ message: 'Choose a JPG, PNG, or WebP image no larger than 5 MB.', error: true });
-                                            notifyAdmin('Choose a JPG, PNG, or WebP image no larger than 5 MB.', 'error');
-                                            return;
-                                        }
-                                        setProfileFile(file);
-                                        setProfileFeedback({ message: `${file.name} is ready to publish.`, error: false });
-                                        notifyAdmin(`${file.name} selected successfully. Publish the image to make it live.`, 'success');
-                                    }} />
-                                    <button className="admin-button primary" type="submit" disabled={uploadingProfile}><i className="fas fa-upload" aria-hidden="true" /> Publish image</button>
-                                </form>
-                                <form className="profile-image-form profile-image-url-form" onSubmit={saveProfileUrl}>
-                                    <input type="url" maxLength={500} placeholder="Or paste an image URL (https://…)" aria-label="Profile image URL" value={profileUrl} onChange={(event) => setProfileUrl(event.target.value)} />
-                                    <button className="admin-button quiet" type="submit" disabled={savingProfileUrl}><i className="fas fa-link" aria-hidden="true" /> Use URL</button>
-                                </form>
-                                <p className={`form-feedback${profileFeedback.error ? ' error' : ''}`} aria-live="polite">{profileFeedback.message}</p>
-                            </div>
+                            <div className="profile-image-preview">{publishedProfileImage && <img src={publishedProfileImage} alt="Current profile image" />}</div>
+                            <div><h3>Profile image</h3><p className="panel-description">Change the image and choose who can see it from your profile settings.</p><a className="admin-button quiet" href="admin-profile.html"><i className="fas fa-sliders" aria-hidden="true" /> Manage image visibility</a></div>
                         </div>
                         {loadingError && <p className="form-feedback error" role="status">{loadingError}</p>}
                         {feedback.message && !reviewing && <p className={`homepage-publish-toast${feedback.error ? ' error' : ''}`} role="status" aria-live="polite"><i className={`fas ${feedback.error ? 'fa-circle-exclamation' : 'fa-circle-check'}`} aria-hidden="true" /> {feedback.message}</p>}
@@ -1151,6 +1090,7 @@ function AdminAccountsContent() {
 }
 
 export function AdminPasswordResetPage() {
+    const { t } = useLanguage();
     const token = new URLSearchParams(window.location.search).get('token') || '';
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
@@ -1179,16 +1119,17 @@ export function AdminPasswordResetPage() {
     }
 
     return <main className="auth-page"><div className="auth-layout">
-        <a className="auth-back-link" href="admin-login.html"><i className="fas fa-arrow-left" aria-hidden="true" /> Back to admin sign-in</a>
+        <LanguageSelector />
+        <a className="auth-back-link" href="admin-login.html"><i className="fas fa-arrow-left" aria-hidden="true" /> {t('Back to admin sign-in')}</a>
         <section className="auth-card" aria-labelledby="reset-title">
-            <div className="auth-heading"><span className="auth-icon"><i className="fas fa-key" aria-hidden="true" /></span><p className="auth-eyebrow">ACCOUNT RECOVERY</p><h1 id="reset-title">{token ? 'Reset password' : 'Forgot password?'}</h1><p>{token ? 'Choose a new password for your admin account.' : 'Enter your admin email and we will send a one-time reset link if the account exists.'}</p></div>
+            <div className="auth-heading"><span className="auth-icon"><i className="fas fa-key" aria-hidden="true" /></span><p className="auth-eyebrow">{t('ACCOUNT RECOVERY')}</p><h1 id="reset-title">{t(token ? 'Reset password' : 'Forgot password?')}</h1><p>{t(token ? 'Choose a new password for your admin account.' : 'Enter your admin email and we will send a one-time reset link if the account exists.')}</p></div>
             <form className="auth-form" onSubmit={submit}>
-                {!token ? <><label htmlFor="reset-email">Admin email</label><div className="auth-input-wrap"><i className="far fa-envelope" aria-hidden="true" /><input id="reset-email" type="email" autoComplete="email" maxLength={254} required value={email} onChange={(event) => setEmail(event.target.value)} /></div></> : <>
-                    <label htmlFor="new-admin-password">New password</label><div className="auth-input-wrap"><i className="fas fa-key" aria-hidden="true" /><input id="new-admin-password" type="password" autoComplete="new-password" minLength={8} maxLength={1024} required value={password} onChange={(event) => setPassword(event.target.value)} /></div>
-                    <label htmlFor="confirm-admin-password">Confirm new password</label><div className="auth-input-wrap"><i className="fas fa-key" aria-hidden="true" /><input id="confirm-admin-password" type="password" autoComplete="new-password" minLength={8} maxLength={1024} required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></div>
+                {!token ? <><label htmlFor="reset-email">{t('Admin email')}</label><div className="auth-input-wrap"><i className="far fa-envelope" aria-hidden="true" /><input id="reset-email" type="email" autoComplete="email" maxLength={254} required value={email} onChange={(event) => setEmail(event.target.value)} /></div></> : <>
+                    <label htmlFor="new-admin-password">{t('New password')}</label><div className="auth-input-wrap"><i className="fas fa-key" aria-hidden="true" /><input id="new-admin-password" type="password" autoComplete="new-password" minLength={8} maxLength={1024} required value={password} onChange={(event) => setPassword(event.target.value)} /></div>
+                    <label htmlFor="confirm-admin-password">{t('Confirm new password')}</label><div className="auth-input-wrap"><i className="fas fa-key" aria-hidden="true" /><input id="confirm-admin-password" type="password" autoComplete="new-password" minLength={8} maxLength={1024} required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></div>
                 </>}
                 <p className={`auth-feedback${isError ? ' error' : ''}`} role="status" aria-live="polite">{feedback}</p>
-                <button className="auth-submit" type="submit" disabled={busy}><span>{busy ? 'Please wait…' : token ? 'Save new password' : 'Send reset link'}</span><i className={`fas ${busy ? 'fa-spinner fa-spin' : 'fa-arrow-right'}`} aria-hidden="true" /></button>
+                <button className="auth-submit" type="submit" disabled={busy}><span>{t(busy ? 'Please wait…' : token ? 'Save new password' : 'Send reset link')}</span><i className={`fas ${busy ? 'fa-spinner fa-spin' : 'fa-arrow-right'}`} aria-hidden="true" /></button>
                 {token && !isError && feedback && <a className="auth-recovery-link" href="admin-login.html">Return to sign in</a>}
             </form>
         </section>
@@ -1196,6 +1137,7 @@ export function AdminPasswordResetPage() {
 }
 
 function ProfileContent() {
+    const { t } = useLanguage();
     const session = useContext(AdminSessionContext);
     const [content, setContent] = useState(null);
     const [originalContent, setOriginalContent] = useState(null);
@@ -1204,8 +1146,8 @@ function ProfileContent() {
     const [profilePreview, setProfilePreview] = useState('');
     const [profileFeedback, setProfileFeedback] = useState({ message: '', error: false });
     const [uploadingProfile, setUploadingProfile] = useState(false);
-    const [profileUrl, setProfileUrl] = useState('');
-    const [savingProfileUrl, setSavingProfileUrl] = useState(false);
+    const [imageVisibility, setImageVisibility] = useState('both');
+    const adminProfileImage = useAdminProfileImage();
     const now = useAdminClock();
     const today = new Intl.DateTimeFormat(undefined, { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(now);
 
@@ -1238,8 +1180,7 @@ function ProfileContent() {
         ? resolveApiAssetUrl(content.brand.imageUrl)
         : '';
 
-    async function publishProfileImage(event) {
-        event.preventDefault();
+    async function publishProfileImage(visibility) {
         if (!profileFile) {
             setProfileFeedback({ message: 'Choose a profile image first.', error: true });
             notifyAdmin('Choose a profile image first.', 'error');
@@ -1249,58 +1190,28 @@ function ProfileContent() {
         try {
             const response = await apiRequest('/homepage/profile-image', {
                 method: 'POST',
-                body: JSON.stringify({ image: await readFileAsDataUrl(profileFile) })
+                body: JSON.stringify({ image: await readFileAsDataUrl(profileFile), visibility })
             });
-            const result = await responseJson(response, 'Could not publish the profile image.');
-            setContent((current) => updateNestedValue(current, ['brand', 'imageUrl'], result.imageUrl));
-            setOriginalContent((current) => updateNestedValue(current, ['brand', 'imageUrl'], result.imageUrl));
+            const result = await responseJson(response, 'Could not save the profile image.');
+            if (visibility !== 'admin') {
+                setContent((current) => updateNestedValue(current, ['brand', 'imageUrl'], result.imageUrl));
+                setOriginalContent((current) => updateNestedValue(current, ['brand', 'imageUrl'], result.imageUrl));
+            }
+            window.dispatchEvent(new Event(ADMIN_PROFILE_IMAGE_UPDATED));
             setProfileFile(null);
             setProfileInputVersion((version) => version + 1);
-            setProfileFeedback({ message: 'Profile image published for all visitors.', error: false });
+            setProfileFeedback({ message: t(visibility === 'admin' ? 'Image set for your admin account only.' : visibility === 'both' ? 'Image published to the public site and admin account.' : 'Image published to the public site only.'), error: false });
         } catch (error) {
             console.error('Profile image upload failed:', error);
-            setProfileFeedback({ message: displayError(error, 'Could not publish the profile image.'), error: true });
+            setProfileFeedback({ message: displayError(error, 'Could not save the profile image.'), error: true });
         } finally {
             setUploadingProfile(false);
         }
     }
 
-    async function saveProfileUrl(event) {
-        event.preventDefault();
-        const url = profileUrl.trim();
-        if (!url) {
-            setProfileFeedback({ message: 'Paste an image URL first.', error: true });
-            notifyAdmin('Paste an image URL first.', 'error');
-            return;
-        }
-        setSavingProfileUrl(true);
-        try {
-            const response = await apiRequest('/homepage', {
-                method: 'PUT',
-                body: JSON.stringify({
-                    content: (() => {
-                        const updated = structuredClone(originalContent);
-                        updated.brand.imageUrl = url;
-                        return updated;
-                    })()
-                })
-            });
-            const result = await responseJson(response, 'Could not save the image URL.');
-            setContent(result.content);
-            setOriginalContent(result.content);
-            setProfileUrl('');
-            setProfileFeedback({ message: 'Profile image URL published for all visitors.', error: false });
-        } catch (error) {
-            console.error('Profile image URL save failed:', error);
-            setProfileFeedback({ message: displayError(error, 'Could not save the image URL. Use a full https:// address.'), error: true });
-        } finally {
-            setSavingProfileUrl(false);
-        }
-    }
-
     return (
         <>
-            <section className="admin-heading"><div><p className="admin-eyebrow">ADMINISTRATOR</p><h1>My profile</h1><p className="admin-subheading">Your signed-in admin details and the profile image shown across the portfolio.</p></div><div className="admin-date"><i className="far fa-calendar" aria-hidden="true" /> <span>{today}</span></div></section>
+            <section className="admin-heading"><div><p className="admin-eyebrow">{t('ADMINISTRATOR')}</p><h1>{t('My profile')}</h1><p className="admin-subheading">{t('Your signed-in admin details and the profile image shown across the portfolio.')}</p></div><div className="admin-date"><i className="far fa-calendar" aria-hidden="true" /> <span>{today}</span></div></section>
             <section id="profile" className="admin-panel admin-page-panel">
                 <div className="panel-heading"><div><p className="admin-eyebrow">ACCOUNT DETAILS</p><h2>Signed-in administrator</h2></div><span className="section-icon"><i className="fas fa-id-badge" aria-hidden="true" /></span></div>
                 <p className="panel-description">These details come from your secure admin session. Sign-in credentials are managed on the server and are never displayed here.</p>
@@ -1312,13 +1223,16 @@ function ProfileContent() {
                 </dl>
             </section>
             <section className="admin-panel admin-page-panel">
-                <div className="panel-heading"><div><p className="admin-eyebrow">PROFILE IMAGE</p><h2>Image used across the site</h2></div><span className="section-icon"><i className="fas fa-image" aria-hidden="true" /></span></div>
-                <p className="panel-description">This image appears in the admin topbar and on the public landing page. Choose a JPG, PNG, or WebP image from your device (maximum 5 MB) or paste a full image URL.</p>
+                <div className="panel-heading"><div><p className="admin-eyebrow">{t('PROFILE IMAGE')}</p><h2>{t('Choose where your image appears')}</h2></div><span className="section-icon"><i className="fas fa-image" aria-hidden="true" /></span></div>
+                <p className="panel-description">{t('Choose a JPG, PNG, or WebP image up to 5 MB. Publish it to the public site and your admin account, or set it for the admin account only.')}</p>
                 <div className="profile-image-upload">
-                    <div className="profile-image-preview">{(profilePreview || publishedProfileImage) && <img src={profilePreview || publishedProfileImage} alt="Current profile image" />}</div>
+                    <div className="profile-image-previews">
+                        <div><div className="profile-image-preview">{((profilePreview && ['admin', 'both'].includes(imageVisibility)) || (!profilePreview && adminProfileImage)) && <img src={profilePreview && ['admin', 'both'].includes(imageVisibility) ? profilePreview : adminProfileImage} alt="Admin account image" />}</div><p className="profile-image-caption">{t('Admin account')}</p></div>
+                        <div><div className="profile-image-preview">{((profilePreview && ['public', 'both'].includes(imageVisibility)) || (!profilePreview && publishedProfileImage)) && <img src={profilePreview && ['public', 'both'].includes(imageVisibility) ? profilePreview : publishedProfileImage} alt="Public profile image" />}</div><p className="profile-image-caption">{t('Public site')}</p></div>
+                    </div>
                     <div>
-                        <form className="profile-image-form" onSubmit={publishProfileImage}>
-                            <label className="admin-button quiet" htmlFor="profile-image-input"><i className="fas fa-image" aria-hidden="true" /> Browse image</label>
+                        <div className="profile-image-form">
+                            <label className="admin-button quiet" htmlFor="profile-image-input"><i className="fas fa-image" aria-hidden="true" /> {t('Browse image')}</label>
                             <input key={profileInputVersion} id="profile-image-input" type="file" accept="image/jpeg,image/png,image/webp" hidden onChange={(event) => {
                                 const file = event.target.files?.[0];
                                 if (!file) return;
@@ -1332,12 +1246,11 @@ function ProfileContent() {
                                 setProfileFile(file);
                                 setProfileFeedback({ message: `${file.name} is ready to publish.`, error: false });
                             }} />
-                            <button className="admin-button primary" type="submit" disabled={uploadingProfile}><i className="fas fa-upload" aria-hidden="true" /> Publish image</button>
-                        </form>
-                        <form className="profile-image-form profile-image-url-form" onSubmit={saveProfileUrl}>
-                            <input type="url" maxLength={500} placeholder="Or paste an image URL (https://…)" aria-label="Profile image URL" value={profileUrl} onChange={(event) => setProfileUrl(event.target.value)} />
-                            <button className="admin-button quiet" type="submit" disabled={savingProfileUrl}><i className="fas fa-link" aria-hidden="true" /> Use URL</button>
-                        </form>
+                            <fieldset className="profile-image-visibility-actions"><legend>{t('Show this image to')}</legend>
+                                {[['admin', 'Admin only'], ['both', 'Both'], ['public', 'Public only']].map(([value, label]) => <label className="profile-image-visibility-option" key={value}><input type="checkbox" checked={imageVisibility === value} onChange={(event) => setImageVisibility(event.target.checked ? value : '')} /> {t(label)}</label>)}
+                            </fieldset>
+                            <button className="admin-button primary" type="button" disabled={!profileFile || !imageVisibility || uploadingProfile} onClick={() => publishProfileImage(imageVisibility)}><i className={`fas ${uploadingProfile ? 'fa-spinner fa-spin' : 'fa-cloud-arrow-up'}`} aria-hidden="true" /> {t('Publish image')}</button>
+                        </div>
                         <p className={`form-feedback${profileFeedback.error ? ' error' : ''}`} aria-live="polite">{profileFeedback.message}</p>
                     </div>
                 </div>

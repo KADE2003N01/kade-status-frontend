@@ -22,6 +22,7 @@ import {
 } from '../pages/admin/AdminPages.jsx';
 import { API_BASE_URL, API_BASE_URLS } from '../services/api.js';
 import GlobalStyles from '../styles/GlobalStyles.jsx';
+import { LanguageProvider } from '../context/LanguageContext.jsx';
 
 const publicPages = {
   'index.html': [Homepage, ''],
@@ -52,6 +53,6 @@ document.title = document.querySelector('title')?.textContent || 'David KWIZERA 
 createRoot(document.getElementById('root')).render(
   <>
     <GlobalStyles />
-    <Page />
+    <LanguageProvider><Page /></LanguageProvider>
   </>
 );
