@@ -4,6 +4,12 @@ import TimedNotification from '../../components/TimedNotification.jsx';
 import LanguageSelector from '../../components/LanguageSelector.jsx';
 import PhoneNumberField, { isValidInternationalPhone } from '../../components/PhoneNumberField.jsx';
 import { getTranslation, hasTranslation, useLanguage } from '../../context/LanguageContext.jsx';
+import { getStoredSessionToken, storeSessionToken } from '../../services/adminSession.js';
+import { AdminLoginPage as AdminLoginView, AdminPasswordResetPage as AdminPasswordResetView } from './auth/AdminAuthPages.jsx';
+import './AdminAccountsPage.css';
+
+export function AdminLoginPage() { return <AdminLoginView />; }
+export function AdminPasswordResetPage() { return <AdminPasswordResetView />; }
 
 const ADMIN_LOGIN_URL = 'admin-login.html';
 const AdminSessionContext = createContext(null);
@@ -28,19 +34,7 @@ function actionSuccessMessage(method, path) {
     return 'Changes saved successfully.';
 }
 
-// Fallback auth token for browsers that block third-party cookies (mobile).
-// The httpOnly cookie remains the primary session mechanism; this only kicks
-// in when the cookie was rejected.
-export function getStoredSessionToken() {
-    try { return window.sessionStorage.getItem('kade-admin-session-token') || ''; } catch { return ''; }
-}
-
-export function storeSessionToken(token) {
-    try {
-        if (token) window.sessionStorage.setItem('kade-admin-session-token', token);
-        else window.sessionStorage.removeItem('kade-admin-session-token');
-    } catch { /* Storage unavailable — cookie-only session. */ }
-}
+export { getStoredSessionToken, storeSessionToken };
 
 export async function apiRequest(path, options = {}) {
     const { silentNotification = false, ...requestOptions } = options;
@@ -142,7 +136,7 @@ function useAdminSession() {
                 const email = typeof result.user?.email === 'string' ? result.user.email.trim() : '';
                 if (!displayName || !email) throw new Error('The admin profile is missing a name or email address.');
                 if (active) {
-                    setSession({ displayName, email });
+                    setSession({ displayName, email, role: result.user?.role || 'portfolio_owner' });
                     document.body.classList.remove('auth-pending');
                 }
             } catch (error) {
@@ -252,10 +246,11 @@ function AdminThemeToggle() {
     );
 }
 
-function useAdminProfileImage() {
+function useAdminProfileImage(enabled = true) {
     const [profileImage, setProfileImage] = useState('');
     const objectUrl = useRef('');
     const loadProfileImage = useCallback(async () => {
+        if (!enabled) return;
         try {
             const privateResponse = await apiRequest('/homepage/admin-profile-image', { silentNotification: true });
             if (privateResponse.ok) {
@@ -281,15 +276,16 @@ function useAdminProfileImage() {
         } catch (error) {
             console.error('Could not load the profile image:', error);
         }
-    }, []);
+    }, [enabled]);
     useEffect(() => {
+        if (!enabled) return undefined;
         loadProfileImage();
         window.addEventListener(ADMIN_PROFILE_IMAGE_UPDATED, loadProfileImage);
         return () => {
             window.removeEventListener(ADMIN_PROFILE_IMAGE_UPDATED, loadProfileImage);
             if (objectUrl.current) URL.revokeObjectURL(objectUrl.current);
         };
-    }, [loadProfileImage]);
+    }, [enabled, loadProfileImage]);
     return profileImage;
 }
 
@@ -300,7 +296,7 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
     const [adminAccountCount, setAdminAccountCount] = useState(null);
     const dismissNotification = useCallback(() => setNotification(null), []);
     const initials = session.displayName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-    const profileImage = useAdminProfileImage();
+    const profileImage = useAdminProfileImage(['platform_owner', 'portfolio_owner', 'profile_manager'].includes(session.role));
     useEffect(() => {
         let active = true;
         apiRequest('/documents')
@@ -315,6 +311,7 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
     }, []);
     useEffect(() => {
         let active = true;
+        if (session.role !== 'platform_owner') { setAdminAccountCount(null); return () => { active = false; }; }
         apiRequest('/auth/admin-users')
             .then((response) => responseJson(response, 'Could not load administrator account count.'))
             .then((result) => {
@@ -322,13 +319,12 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
             })
             .catch((error) => console.error('Could not load administrator account count:', error));
         return () => { active = false; };
-    }, []);
+    }, [session.role]);
     const links = [
         { id: 'overview', href: 'admin.html', icon: 'fa-chart-pie', text: 'Overview' },
         { id: 'downloads', href: 'admin-downloads.html', icon: 'fa-download', text: 'Downloads' },
         { id: 'homepage', href: 'admin-homepage.html', icon: 'fa-pen-to-square', text: 'Landing page' },
         { id: 'documents', href: 'admin-documents.html', icon: 'fa-file-arrow-up', text: 'Documents' },
-        { id: 'accounts', href: 'admin-accounts.html', icon: 'fa-users', text: 'Admin accounts' },
         { id: 'profile', href: 'admin-profile.html', icon: 'fa-id-badge', text: 'My profile' }
     ];
     const note = {
@@ -336,7 +332,6 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
         downloads: 'Review visitor details and document request status.',
         homepage: 'Landing-page edits are saved on the server and visible to every visitor.',
         documents: 'Published documents are stored privately and require visitor details before viewing or downloading.',
-        accounts: 'View administrator accounts and send secure, time-limited password reset links.',
         profile: 'Update your administrator details and profile image shown across the admin workspace.'
     }[active];
 
@@ -375,13 +370,21 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
             <main className="admin-shell">
                 <aside className="admin-sidebar" aria-label="Admin sections">
                     <p className="admin-nav-label">{t('WORKSPACE')}</p>
-                    {links.map((link) => (
+                    {links.filter((link) => {
+                        if (session.role === 'platform_owner' || session.role === 'portfolio_owner') return true;
+                        const permissions = { downloads: 'download_manager', homepage: 'content_manager', documents: 'document_manager', profile: 'profile_manager' };
+                        return session.role === permissions[link.id];
+                    }).map((link) => (
                         <a key={link.id} className={`admin-nav-link${active === link.id ? ' active' : ''}`} href={link.href}>
-                            <i className={`fas ${link.icon}`} aria-hidden="true" /> {t(link.text)}
+                            <i className={`fas ${link.icon}`} aria-hidden="true" />
+                            {link.id === 'accounts'
+                                ? <span className="admin-nav-link-copy"><span>{t(link.text)}</span><span className="nav-count admin-account-count" aria-label={t('Administrator count', { count: adminAccountCount ?? 0 })}>{adminAccountCount === null ? '…' : adminAccountCount}</span></span>
+                                : t(link.text)}
                             {link.id === 'downloads' && <span className="nav-count">{downloadCount}</span>}
                             {link.id === 'documents' && <span className="nav-count" aria-label={`${publishedDocumentCount} published CVs and certificates`}>{publishedDocumentCount}</span>}
                         </a>
                     ))}
+                    {session.role === 'platform_owner' && <a className="admin-nav-link" href="platform-owner.html"><i className="fas fa-shield-halved" aria-hidden="true" /><span>{t('Control Admins')}</span></a>}
                     <AdminThemeToggle />
                     <LanguageSelector />
                     <div className="admin-sidebar-note">
@@ -394,11 +397,6 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
                             : <span className="admin-account-avatar" aria-hidden="true">{initials}</span>}
                         <span className="admin-account-details"><strong>{session.displayName}</strong><small>{session.email}</small></span>
                     </div>
-                    <a className="admin-sidebar-account-count" href="admin-accounts.html" title="View administrator accounts">
-                        <i className="fas fa-users" aria-hidden="true" />
-                        <span>{t('Admin accounts')}</span>
-                        <strong>{adminAccountCount === null ? '…' : adminAccountCount}</strong>
-                    </a>
                     <div className="admin-sidebar-spacer" />
                     {logoutError && <p className="form-feedback error" role="status">{logoutError}</p>}
                     <button className="admin-logout" type="button" onClick={logout} disabled={loggingOut}>
@@ -416,8 +414,17 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
 
 function AdminPage({ active, children }) {
     const auth = useAdminSession();
-    const downloadData = useAdminDownloads(auth.ready && Boolean(auth.session));
+    const allowedRoles = { overview: ['platform_owner', 'portfolio_owner'], downloads: ['platform_owner', 'portfolio_owner', 'download_manager'], homepage: ['platform_owner', 'portfolio_owner', 'content_manager'], documents: ['platform_owner', 'portfolio_owner', 'document_manager'], profile: ['platform_owner', 'portfolio_owner', 'profile_manager'], accounts: ['platform_owner'] };
+    const canAccess = !allowedRoles[active] || allowedRoles[active].includes(auth.session?.role);
+    const downloadData = useAdminDownloads(auth.ready && Boolean(auth.session) && ['platform_owner', 'portfolio_owner', 'download_manager'].includes(auth.session?.role));
+    useEffect(() => {
+        if (auth.ready && auth.session && !canAccess) {
+            const destination = { download_manager: 'admin-downloads.html', content_manager: 'admin-homepage.html', document_manager: 'admin-documents.html', profile_manager: 'admin-profile.html' }[auth.session.role] || 'admin.html';
+            window.location.replace(destination);
+        }
+    }, [auth.ready, auth.session, canAccess]);
     if (!auth.ready || !auth.session) return null;
+    if (!canAccess) return null;
     return (
         <AdminFrame
             session={auth.session}
@@ -432,167 +439,7 @@ function AdminPage({ active, children }) {
     );
 }
 
-export function AdminLoginPage() {
-    const { t } = useLanguage();
-    // The name of the admin who signed in last, fetched so the login-page
-    // footer can show the same name as the public site footer.
-    const [loginAdminName, setLoginAdminName] = useState('David KWIZERA');
-    useEffect(() => {
-        let active = true;
-        apiFetch('/homepage')
-            .then(async (response) => {
-                const result = await response.json();
-                if (active && typeof result.content?.adminName === 'string' && result.content.adminName.trim()) {
-                    setLoginAdminName(result.content.adminName.trim());
-                }
-            })
-            .catch(() => { /* Keep the default name when the API is unreachable. */ });
-        return () => { active = false; };
-    }, []);
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [showPassword, setShowPassword] = useState(false);
-    const [feedback, setFeedback] = useState('');
-    const [loginNotification, setLoginNotification] = useState(null);
-    const dismissLoginNotification = useCallback(() => setLoginNotification(null), []);
-    const [submitting, setSubmitting] = useState(false);
 
-    useEffect(() => {
-        if (new URLSearchParams(window.location.search).get('session') === 'unavailable') {
-            setFeedback('Could not verify your previous session. Sign in again to continue.');
-        }
-        // Warm up a sleeping server (e.g. Render free tier) while the page opens.
-        apiFetch('/health', { credentials: 'include' }).catch(() => {});
-        let active = true;
-        apiFetch('/auth/me', {
-            credentials: 'include',
-            headers: getStoredSessionToken() ? { Authorization: `Bearer ${getStoredSessionToken()}` } : undefined
-        })
-            .then(async (response) => {
-                if (response.ok) {
-                    window.location.replace('admin.html');
-                    return;
-                }
-                if (response.status === 401) storeSessionToken('');
-                if (response.status !== 401) {
-                    const result = await response.json();
-                    throw new Error(result.error || 'Could not verify the admin session.');
-                }
-            })
-            .catch((error) => {
-                console.error('Could not check the admin session:', error);
-                if (active) {
-                    setFeedback('Could not verify the sign-in service. Check the connection and try again.');
-                    setLoginNotification({ message: 'Could not verify the sign-in service.', tone: 'error' });
-                }
-            });
-        return () => { active = false; };
-    }, []);
-
-    async function submitLogin(event) {
-        event.preventDefault();
-        const checkStartedAt = Date.now();
-        const keepCheckVisible = async () => {
-            const remaining = 800 - (Date.now() - checkStartedAt);
-            if (remaining > 0) await new Promise((resolve) => window.setTimeout(resolve, remaining));
-        };
-        setFeedback('');
-        setSubmitting(true);
-        try {
-            const response = await apiFetch('/auth/login', {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ email, password })
-            });
-            const result = await response.json();
-            await keepCheckVisible();
-            if (!response.ok) {
-                setFeedback(result.error || 'Could not sign in. Please try again.');
-                setLoginNotification({ message: result.error || 'Could not sign in. Please try again.', tone: 'error' });
-                return;
-            }
-
-            // Save the fallback session token (used when the browser blocks
-            // third-party cookies, e.g. on mobile).
-            storeSessionToken(result.sessionToken || '');
-
-            // Confirm the session is usable: either via the HTTP-only cookie
-            // or the stored bearer token.
-            const sessionToken = getStoredSessionToken();
-            const sessionResponse = await apiFetch('/auth/me', {
-                credentials: 'include',
-                headers: sessionToken ? { Authorization: `Bearer ${sessionToken}` } : undefined
-            });
-            const sessionResult = await sessionResponse.json();
-            const signedInEmail = result.user?.email?.trim().toLowerCase();
-            const verifiedEmail = sessionResult.user?.email?.trim().toLowerCase();
-            if (!sessionResponse.ok || !sessionResult.success || !signedInEmail || verifiedEmail !== signedInEmail) {
-                storeSessionToken('');
-                const message = 'Your credentials were accepted, but this browser could not verify the admin session. Allow cookies for this site and try again.';
-                setFeedback(message);
-                setLoginNotification({ message, tone: 'error' });
-                return;
-            }
-
-            try { window.sessionStorage.setItem('kade-admin-login-notice', 'You signed in successfully.'); } catch { /* Continue to the admin workspace if storage is disabled. */ }
-            window.location.replace('admin.html');
-        } catch (error) {
-            await keepCheckVisible();
-            console.error('Admin login request failed:', error);
-            const message = error instanceof Error && error.message
-                ? error.message
-                : 'The sign-in server did not respond. It may be waking up — try again in a few seconds.';
-            setFeedback(message);
-            setLoginNotification({ message, tone: 'error' });
-        } finally {
-            setSubmitting(false);
-        }
-    }
-
-    return (
-        <main className="auth-page">
-            <TimedNotification message={loginNotification?.message} tone={loginNotification?.tone} onClose={dismissLoginNotification} />
-            <div className="auth-layout">
-                <LanguageSelector />
-                <a className="auth-back-link" href="../index.html"><i className="fas fa-arrow-left" aria-hidden="true" /> {t('Back to portfolio')}</a>
-                <section className="auth-card" aria-labelledby="login-title">
-                    <div className="auth-heading">
-                        <span className="auth-icon"><i className="fas fa-shield-halved" aria-hidden="true" /></span>
-                        <p className="auth-eyebrow">{t('PRIVATE WORKSPACE')}</p>
-                        <h1 id="login-title">{t('Welcome back')}</h1>
-                        <p>{t('Sign in with your administrator credentials to continue.')}</p>
-                    </div>
-                    <form className="auth-form" onSubmit={submitLogin} autoComplete="off">
-                        <label htmlFor="admin-email">{t('Email address')}</label>
-                        <div className="auth-input-wrap">
-                            <i className="far fa-envelope" aria-hidden="true" />
-                            <input id="admin-email" name="email" type="email" autoComplete="off" maxLength={254} placeholder="you@example.com" required value={email} onChange={(event) => setEmail(event.target.value)} />
-                        </div>
-                        <label htmlFor="admin-password">{t('Password')}</label>
-                        <div className="auth-input-wrap">
-                            <i className="fas fa-key" aria-hidden="true" />
-                            <input id="admin-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="new-password" maxLength={1024} placeholder="Enter your password" required value={password} onChange={(event) => setPassword(event.target.value)} />
-                            <button type="button" aria-label={showPassword ? 'Hide password' : 'Show password'} onClick={() => setShowPassword((visible) => !visible)}>
-                                <i className={`far ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`} aria-hidden="true" />
-                            </button>
-                        </div>
-                        <p className="auth-feedback" aria-live="polite">{feedback}</p>
-                        <button className="auth-submit" type="submit" disabled={submitting}>
-                            <span>{submitting ? 'Checking credentials…' : 'Sign in to admin'}</span><i className={`fas ${submitting ? 'fa-spinner fa-spin' : 'fa-arrow-right'}`} aria-hidden="true" />
-                        </button>
-                    </form>
-                    <a className="auth-recovery-link" href="admin-reset-password.html">Forgot your password?</a>
-                    <p className="auth-footnote"><i className="fas fa-lock" aria-hidden="true" /> Secure sign-in · Administrator access only</p>
-                </section>
-                <footer className="auth-footer">
-                    <p>© {new Date().getFullYear()} {loginAdminName} · All rights reserved.</p>
-                    <p>Powered by KadeTech | <a href="tel:+250788950833">Contact</a> | <a href="https://mail.google.com/mail/?view=cm&fs=1&to=kadecomputerscience@gmail.com" target="_blank" rel="noopener noreferrer">Email</a></p>
-                </footer>
-            </div>
-        </main>
-    );
-}
 
 export function AdminOverviewPage() {
     return <AdminPage active="overview"><OverviewContentPage /></AdminPage>;
@@ -1102,15 +949,22 @@ export function AdminAccountsPage() {
 }
 
 function AdminAccountsContent() {
+    const { t } = useLanguage();
     const [admins, setAdmins] = useState([]);
+    const [recentActivity, setRecentActivity] = useState([]);
+    const [searchTerm, setSearchTerm] = useState('');
+    const [activitySearchInput, setActivitySearchInput] = useState('');
+    const [activitySearch, setActivitySearch] = useState('');
     const [loadingAdmins, setLoadingAdmins] = useState(true);
     const [loadError, setLoadError] = useState(false);
     const [busyId, setBusyId] = useState(null);
     const [feedback, setFeedback] = useState({ message: '', error: false });
+    const dismissFeedback = useCallback(() => setFeedback({ message: '', error: false }), []);
     const loadAdmins = useCallback(async () => {
         const response = await apiRequest('/auth/admin-users');
         const result = await responseJson(response, 'Could not load administrator accounts.');
         setAdmins(Array.isArray(result.admins) ? result.admins : []);
+        setRecentActivity(Array.isArray(result.recentActivity) ? result.recentActivity : []);
         setLoadingAdmins(false);
     }, []);
     useEffect(() => {
@@ -1127,81 +981,59 @@ function AdminAccountsContent() {
         try {
             const response = await apiRequest(`/auth/admin-users/${admin.id}/password-reset`, { method: 'POST' });
             const result = await responseJson(response, 'Could not send a password reset link.');
-            setFeedback({ message: result.message || `Reset link sent to ${admin.email}.`, error: false });
+            setFeedback({ message: t(result.message || `Reset link sent to ${admin.email}.`), error: false });
         } catch (error) {
             setFeedback({ message: displayError(error, 'Could not send a password reset link.'), error: true });
-        } finally { setBusyId(null); }
+        } finally {
+            setBusyId(null);
+            loadAdmins().catch(() => {});
+        }
     }
 
+    const visibleAdmins = admins.filter((admin) => `${admin.displayName} ${admin.email} ${admin.phone || ''}`.toLowerCase().includes(searchTerm.trim().toLowerCase()));
+    const visibleActivity = recentActivity.filter((event) => `${event.action || ''} ${event.actorEmail || ''} ${event.targetEmail || ''} ${event.createdAt || ''} ${event.action?.includes('failed') ? 'failed' : 'done'}`.toLowerCase().includes(activitySearch.toLowerCase()));
+
     return <>
-        <section className="admin-heading"><div><p className="admin-eyebrow">WORKSPACE SECURITY</p><h1>Admin accounts</h1><p className="admin-subheading">{loadingAdmins ? 'Loading accounts from the database…' : loadError ? 'Could not load accounts from the database.' : `${admins.length} administrator account${admins.length === 1 ? '' : 's'} stored in the database.`}</p></div></section>
-        <section className="admin-panel">
-            <div className="panel-heading"><div><p className="admin-eyebrow">DATABASE ACCOUNTS</p><h2>Administrator directory</h2></div><span className="section-icon"><i className="fas fa-users" aria-hidden="true" /></span></div>
-            <p className="panel-description">Password hashes are never shown in the browser. Send a time-limited recovery link to reset an account password.</p>
-            {feedback.message && <p className={`form-feedback${feedback.error ? ' error' : ''}`} role="status">{feedback.message}</p>}
-            <div className="table-wrap">
+        <section className="admin-heading"><div><p className="admin-eyebrow">{t('WORKSPACE SECURITY')}</p><h1>{t('Admin directory')}</h1><p className="admin-subheading">{loadingAdmins ? t('Loading accounts from the database…') : loadError ? t('Could not load accounts from the database.') : t(admins.length === 1 ? '{count} administrator account stored in the database.' : '{count} administrator accounts stored in the database.', { count: admins.length })}</p></div></section>
+        <section className="admin-panel admin-accounts-panel">
+            <div className="panel-heading"><div><p className="admin-eyebrow">{t('DATABASE ACCOUNTS')}</p><h2>{t('Registered administrators')}</h2></div><span className="section-icon"><i className="fas fa-users" aria-hidden="true" /></span></div>
+            <p className="panel-description">{t('Password hashes are never shown in the browser. Send a time-limited recovery link to reset an account password.')}</p>
+            <TimedNotification message={feedback.message} tone={feedback.error ? 'error' : 'success'} onClose={dismissFeedback} />
+            <label className="admin-account-search"><i className="fas fa-magnifying-glass" aria-hidden="true" /><span className="sr-only">{t('Search administrators')}</span><input type="search" value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} placeholder={t('Search by name, email, or phone')} /></label>
+            <div className="table-wrap admin-account-scroll">
                 <table className="download-table admin-account-table">
-                    <thead><tr><th>NAME</th><th>PHONE</th><th>EMAIL</th><th>PASSWORD</th><th>RESET</th></tr></thead>
-                    <tbody>{admins.map((admin) => <tr key={admin.id}>
+                    <thead><tr><th>{t('NAME')}</th><th>{t('PHONE')}</th><th>{t('EMAIL')}</th><th>{t('PASSWORD')}</th><th>{t('RESET')}</th></tr></thead>
+                    <tbody>{visibleAdmins.map((admin) => <tr key={admin.id}>
                         <td><strong>{admin.displayName}</strong></td>
-                        <td>{admin.phone || 'Not provided'}</td>
+                        <td>{admin.phone || t('Not provided')}</td>
                         <td>{admin.email}</td>
-                        <td><span className="password-protected"><i className="fas fa-lock" aria-hidden="true" /> Protected</span></td>
-                        <td><button className="admin-button quiet" type="button" disabled={busyId === admin.id} onClick={() => sendResetLink(admin)}><i className={`fas ${busyId === admin.id ? 'fa-spinner fa-spin' : 'fa-envelope'}`} aria-hidden="true" /> {busyId === admin.id ? 'Sending…' : 'Send reset link'}</button></td>
+                        <td><span className="password-protected"><i className="fas fa-lock" aria-hidden="true" /> {t('Protected')}</span></td>
+                        <td><button className="admin-button quiet" type="button" disabled={busyId === admin.id} onClick={() => sendResetLink(admin)}><i className={`fas ${busyId === admin.id ? 'fa-spinner fa-spin' : 'fa-envelope'}`} aria-hidden="true" /> {busyId === admin.id ? t('Sending…') : t('Send reset link')}</button></td>
                     </tr>)}</tbody>
                 </table>
-                {!loadingAdmins && !loadError && !admins.length && <p className="admin-account-empty">No administrator accounts were returned.</p>}
+                {!loadingAdmins && !loadError && !admins.length && <p className="admin-account-empty">{t('No administrator accounts were returned.')}</p>}
+                {!loadingAdmins && !loadError && admins.length > 0 && visibleAdmins.length === 0 && <p className="admin-account-empty">{t('No administrators match your search.')}</p>}
+            </div>
+        </section>
+        <section className="admin-panel admin-account-activity">
+            <div className="panel-heading"><div><p className="admin-eyebrow">{t('RECENT SECURITY ACTIVITY')}</p><h2>{t('Password reset activity')}</h2></div><span className="admin-account-activity-count">{t('Latest {count}', { count: recentActivity.length })}</span></div>
+            <form className="admin-account-activity-search" onSubmit={(event) => { event.preventDefault(); setActivitySearch(activitySearchInput.trim().toLowerCase()); }}>
+                <label><i className="fas fa-magnifying-glass" aria-hidden="true" /><span className="sr-only">{t('Search password reset activity')}</span><input type="search" value={activitySearchInput} onChange={(event) => setActivitySearchInput(event.target.value)} placeholder={t('Search by account, action, or result')} /></label>
+                <button className="admin-button quiet" type="submit">{t('Search')}</button>
+            </form>
+            <div className="admin-account-activity-scroll">
+                {recentActivity.length ? visibleActivity.length ? <table className="admin-account-activity-table"><thead><tr><th>{t('ACTION')}</th><th>{t('ACCOUNT')}</th><th>{t('RESULT')}</th><th>{t('TIME')}</th></tr></thead><tbody>{visibleActivity.map((event) => {
+                    const failed = event.action.includes('failed');
+                    const actionLabel = event.action === 'admin_password_reset_completed' ? t('Password reset completed') : event.action.includes('setup_link') ? t('Account setup link requested') : event.action.includes('link') || event.action === 'admin_password_reset_sent' ? t('Reset link requested') : t('Password reset activity');
+                    const timestamp = event.createdAt ? new Date(event.createdAt.includes('T') ? event.createdAt : `${event.createdAt.replace(' ', 'T')}Z`) : null;
+                    return <tr key={event.id}><td>{actionLabel}</td><td>{event.targetEmail || event.actorEmail || '—'}</td><td><span className={`admin-reset-outcome ${failed ? 'failed' : 'done'}`}>{failed ? t('Failed') : t('Done')}</span></td><td><time>{timestamp && !Number.isNaN(timestamp.getTime()) ? timestamp.toLocaleString() : event.createdAt || '—'}</time></td></tr>;
+                })}</tbody></table> : <p className="admin-account-activity-empty">{t('No activity matches your search.')}</p> : <p className="admin-account-activity-empty">{t('No password reset activity has been recorded yet.')}</p>}
             </div>
         </section>
     </>;
 }
 
-export function AdminPasswordResetPage() {
-    const { t } = useLanguage();
-    const token = new URLSearchParams(window.location.search).get('token') || '';
-    const [email, setEmail] = useState('');
-    const [password, setPassword] = useState('');
-    const [confirmation, setConfirmation] = useState('');
-    const [feedback, setFeedback] = useState('');
-    const [isError, setIsError] = useState(false);
-    const [busy, setBusy] = useState(false);
 
-    async function submit(event) {
-        event.preventDefault();
-        if (token && password !== confirmation) { setIsError(true); setFeedback('The passwords do not match.'); return; }
-        setBusy(true);
-        setFeedback('');
-        try {
-            const response = await apiFetch(token ? '/auth/password-reset/confirm' : '/auth/password-reset/request', {
-                method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(token ? { token, password } : { email: email.trim() })
-            });
-            const result = await response.json();
-            if (!response.ok) throw new Error(result.error || 'Could not complete the request.');
-            setIsError(false);
-            setFeedback(result.message || 'Request completed.');
-            if (token) { setPassword(''); setConfirmation(''); }
-        } catch (error) { setIsError(true); setFeedback(error.message || 'Could not complete the request.'); }
-        finally { setBusy(false); }
-    }
-
-    return <main className="auth-page"><div className="auth-layout">
-        <LanguageSelector />
-        <a className="auth-back-link" href="admin-login.html"><i className="fas fa-arrow-left" aria-hidden="true" /> {t('Back to admin sign-in')}</a>
-        <section className="auth-card" aria-labelledby="reset-title">
-            <div className="auth-heading"><span className="auth-icon"><i className="fas fa-key" aria-hidden="true" /></span><p className="auth-eyebrow">{t('ACCOUNT RECOVERY')}</p><h1 id="reset-title">{t(token ? 'Reset password' : 'Forgot password?')}</h1><p>{t(token ? 'Choose a new password for your admin account.' : 'Enter your admin email and we will send a one-time reset link if the account exists.')}</p></div>
-            <form className="auth-form" onSubmit={submit}>
-                {!token ? <><label htmlFor="reset-email">{t('Admin email')}</label><div className="auth-input-wrap"><i className="far fa-envelope" aria-hidden="true" /><input id="reset-email" type="email" autoComplete="email" maxLength={254} required value={email} onChange={(event) => setEmail(event.target.value)} /></div></> : <>
-                    <label htmlFor="new-admin-password">{t('New password')}</label><div className="auth-input-wrap"><i className="fas fa-key" aria-hidden="true" /><input id="new-admin-password" type="password" autoComplete="new-password" minLength={8} maxLength={1024} required value={password} onChange={(event) => setPassword(event.target.value)} /></div>
-                    <label htmlFor="confirm-admin-password">{t('Confirm new password')}</label><div className="auth-input-wrap"><i className="fas fa-key" aria-hidden="true" /><input id="confirm-admin-password" type="password" autoComplete="new-password" minLength={8} maxLength={1024} required value={confirmation} onChange={(event) => setConfirmation(event.target.value)} /></div>
-                </>}
-                <p className={`auth-feedback${isError ? ' error' : ''}`} role="status" aria-live="polite">{feedback}</p>
-                <button className="auth-submit" type="submit" disabled={busy}><span>{t(busy ? 'Please wait…' : token ? 'Save new password' : 'Send reset link')}</span><i className={`fas ${busy ? 'fa-spinner fa-spin' : 'fa-arrow-right'}`} aria-hidden="true" /></button>
-                {token && !isError && feedback && <a className="auth-recovery-link" href="admin-login.html">Return to sign in</a>}
-            </form>
-        </section>
-    </div></main>;
-}
 
 function ProfileContent() {
     const { t } = useLanguage();
@@ -1213,7 +1045,8 @@ function ProfileContent() {
     const [profilePreview, setProfilePreview] = useState('');
     const [profileFeedback, setProfileFeedback] = useState({ message: '', error: false });
     const [uploadingProfile, setUploadingProfile] = useState(false);
-    const [imageVisibility, setImageVisibility] = useState('both');
+    const [imageVisibility, setImageVisibility] = useState('admin');
+    const canPublishPublicProfile = session.role === 'platform_owner';
     const adminProfileImage = useAdminProfileImage();
     const now = useAdminClock();
     const today = new Intl.DateTimeFormat(document.documentElement.lang || 'en', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(now);
@@ -1291,7 +1124,7 @@ function ProfileContent() {
             </section>
             <section className="admin-panel admin-page-panel">
                 <div className="panel-heading"><div><p className="admin-eyebrow">{t('PROFILE IMAGE')}</p><h2>{t('Choose where your image appears')}</h2></div><span className="section-icon"><i className="fas fa-image" aria-hidden="true" /></span></div>
-                <p className="panel-description">{t('Choose a JPG, PNG, or WebP image up to 5 MB. Publish it to the public site and your admin account, or set it for the admin account only.')}</p>
+                <p className="panel-description">{t('Choose a JPG, PNG, or WebP image up to 5 MB. Only the controlling super admin can publish a profile image to the shared public site.')}</p>
                 <div className="profile-image-upload">
                     <div className="profile-image-previews">
                         <div><div className="profile-image-preview">{((profilePreview && ['admin', 'both'].includes(imageVisibility)) || (!profilePreview && adminProfileImage)) && <img src={profilePreview && ['admin', 'both'].includes(imageVisibility) ? profilePreview : adminProfileImage} alt="Admin account image" />}</div><p className="profile-image-caption">{t('Admin account')}</p></div>
@@ -1314,7 +1147,8 @@ function ProfileContent() {
                                 setProfileFeedback({ message: `${file.name} is ready to publish.`, error: false });
                             }} />
                             <fieldset className="profile-image-visibility-actions"><legend>{t('Show this image to')}</legend>
-                                {[['admin', 'Admin only'], ['both', 'Both'], ['public', 'Public only']].map(([value, label]) => <label className="profile-image-visibility-option" key={value}><input type="checkbox" checked={imageVisibility === value} onChange={(event) => setImageVisibility(event.target.checked ? value : '')} /> {t(label)}</label>)}
+                                <label className="profile-image-visibility-option"><input type="checkbox" checked={imageVisibility === 'admin'} onChange={(event) => setImageVisibility(event.target.checked ? 'admin' : '')} /> {t('Admin only')}</label>
+                                <label className="profile-image-visibility-option" title={canPublishPublicProfile ? '' : t('Only the controlling super admin can change the shared public site.')}><input type="checkbox" checked={canPublishPublicProfile && imageVisibility === 'both'} disabled={!canPublishPublicProfile} onChange={(event) => setImageVisibility(event.target.checked ? 'both' : 'admin')} /> {t('Public site')} {!canPublishPublicProfile && <small>{t('(super admin only)')}</small>}</label>
                             </fieldset>
                             <button className="admin-button primary" type="button" disabled={!profileFile || !imageVisibility || uploadingProfile} onClick={() => publishProfileImage(imageVisibility)}><i className={`fas ${uploadingProfile ? 'fa-spinner fa-spin' : 'fa-cloud-arrow-up'}`} aria-hidden="true" /> {t('Publish image')}</button>
                         </div>

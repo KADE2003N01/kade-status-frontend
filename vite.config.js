@@ -17,7 +17,8 @@ const pageTitles = {
   'admin-homepage.html': 'Landing Page | Portfolio Admin',
   'admin-documents.html': 'Documents | Portfolio Admin',
   'admin-profile.html': 'My Profile | Portfolio Admin',
-  'admin-accounts.html': 'Admin Accounts | Portfolio Admin',
+  'admin-accounts.html': 'Admin Directory | Portfolio Admin',
+  'platform-owner.html': 'Super Admin Portal | Portfolio Admin',
   'admin-reset-password.html': 'Reset Admin Password | Portfolio Admin'
 };
 
@@ -47,7 +48,7 @@ function reactPageShell() {
         const fileName = path.basename(context.filename || context.path || 'index.html');
         const title = pageTitles[fileName];
         if (!title) return undefined;
-        const admin = fileName.startsWith('admin');
+        const admin = fileName.startsWith('admin') || fileName === 'platform-owner.html';
         const noIndex = admin ? '<meta name="robots" content="noindex, nofollow">' : '';
         const description = fileName === 'index.html'
           ? "<meta name=\"description\" content=\"Explore David KWIZERA's portfolio, background, skills, projects and professional documents.\">"
@@ -75,7 +76,7 @@ function reactPageShell() {
       const outputDirectory = path.join(frontendRoot, 'dist');
       const template = readFileSync(path.join(outputDirectory, 'index.html'), 'utf8');
       for (const [fileName, title] of Object.entries(pageTitles)) {
-        const isAdmin = fileName.startsWith('admin');
+        const isAdmin = fileName.startsWith('admin') || fileName === 'platform-owner.html';
         const html = template
           .replace(/<title>[^<]*<\/title>/, `<title>${title}</title>`)
           .replace('</head>', `${isAdmin ? '<meta name="robots" content="noindex, nofollow">' : ''}\n  </head>`);
@@ -97,6 +98,9 @@ export default defineConfig({
   },
   publicDir: false,
   server: {
+    host: '127.0.0.1',
+    port: 5173,
+    strictPort: true,
     proxy: {
       '/api': 'http://127.0.0.1:5000'
     }

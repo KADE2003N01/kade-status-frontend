@@ -226,7 +226,7 @@ nav {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: clamp(8px, 1.8vw, 24px);
+  gap: clamp(6px, 1vw, 14px);
   margin: 0 0 0 auto;
   padding: 0;
   list-style: none;
@@ -283,6 +283,10 @@ nav {
   align-items: center;
   gap: 10px;
   flex-shrink: 0;
+}
+
+.nav-language-mobile {
+  display: none;
 }
 
 .nav-login,
@@ -359,10 +363,15 @@ nav {
   border-bottom: 1px solid var(--border);
 }
 
-/* Hero background image (set inline on #home) */
-#home[style*="background-image"] {
-  background:
-    linear-gradient(180deg, color-mix(in srgb, var(--bg) 18%, transparent), color-mix(in srgb, var(--bg) 45%, transparent)),
+#home {
+  margin-top: 12px;
+  border-radius: 18px;
+}
+
+/* Keep the portrait visible while giving hero text a light, readable backdrop. */
+#home[style*="--hero-bg"] {
+  background-image:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.86) 0%, rgba(255, 255, 255, 0.64) 46%, rgba(255, 255, 255, 0.12) 100%),
     var(--hero-bg, none);
   background-size: cover;
   background-position: center;
@@ -380,6 +389,12 @@ html.dark-theme #others {
     radial-gradient(circle at 80% 20%, rgba(59, 130, 246, 0.25), transparent 45%),
     radial-gradient(circle at 15% 85%, rgba(29, 78, 216, 0.3), transparent 40%),
     linear-gradient(180deg, var(--bg) 0%, var(--bg-soft) 100%);
+}
+
+html.dark-theme #home[style*="--hero-bg"] {
+  background-image:
+    linear-gradient(90deg, rgba(7, 14, 30, 0.88) 0%, rgba(7, 14, 30, 0.68) 46%, rgba(7, 14, 30, 0.12) 100%),
+    var(--hero-bg, none);
 }
 
 #home::before, #about::before, #background::before, #skills::before, #hobbies::before, #contact::before, #others::before {
@@ -2341,6 +2356,27 @@ footer:not(.admin-footer) .footer-built a {
   color: var(--accent);
 }
 
+.admin-owner-gateway {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 11px;
+  border: 1px solid color-mix(in srgb, var(--accent) 25%, var(--border));
+  border-radius: 9px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  text-decoration: none;
+  font-size: 0.78rem;
+  font-weight: 750;
+  white-space: nowrap;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.admin-owner-gateway:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, white);
+}
+
 .admin-shell {
   display: grid;
   grid-template-columns: 260px minmax(0, 1fr);
@@ -2423,6 +2459,17 @@ footer:not(.admin-footer) .footer-built a {
   font-weight: 750;
 }
 
+.admin-nav-link-copy {
+  display: flex;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+.admin-nav-link-copy .admin-account-count {
+  flex: 0 0 auto;
+}
+
 .admin-sidebar-note {
   display: flex;
   gap: 10px;
@@ -2461,9 +2508,10 @@ footer:not(.admin-footer) .footer-built a {
   font-weight: 700;
 }
 
-.admin-sidebar .language-selector select {
+.admin-sidebar .language-picker {
   flex: 1;
-  max-width: none;
+  display: flex;
+  justify-content: flex-end;
 }
 
 .admin-sidebar .admin-theme-toggle:hover,
@@ -3543,19 +3591,72 @@ html.dark-theme .admin-button.danger:hover {
   font-size: 0.8rem;
 }
 
-.language-selector select {
+.language-picker {
+  position: relative;
+  z-index: 60;
+}
+
+.language-picker summary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-width: 62px;
   min-height: 36px;
-  max-width: 130px;
-  padding: 4px 8px;
+  padding: 4px 7px;
   border: 1px solid var(--border-strong);
   border-radius: 8px;
   background: var(--panel);
   color: var(--text);
   font: inherit;
+  font-weight: 750;
+  list-style: none;
+  cursor: pointer;
 }
 
-.language-selector.compact select {
-  max-width: 116px;
+.language-picker summary::-webkit-details-marker {
+  display: none;
+}
+
+.language-picker summary i {
+  font-size: 0.6rem;
+}
+
+.language-picker[open] summary {
+  border-color: var(--accent);
+}
+
+.language-picker-menu {
+  position: absolute;
+  z-index: 100;
+  top: calc(100% + 6px);
+  right: 0;
+  display: grid;
+  min-width: 62px;
+  gap: 4px;
+  padding: 5px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--panel-solid);
+  box-shadow: var(--shadow-modal);
+}
+
+.language-picker-menu button {
+  min-height: 36px;
+  padding: 5px 8px;
+  border: 0;
+  border-radius: 7px;
+  color: var(--text);
+  background: transparent;
+  font: inherit;
+  font-weight: 750;
+  cursor: pointer;
+}
+
+.language-picker-menu button:hover,
+.language-picker-menu button:focus-visible {
+  color: var(--accent);
+  background: var(--accent-soft);
 }
 
 .profile-image-preview {
@@ -4298,6 +4399,34 @@ fieldset.profile-image-visibility-actions {
     display: flex;
     animation: rise-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) both;
   }
+  .nav-language-desktop {
+    display: none;
+  }
+  .nav-language-mobile {
+    display: block;
+    margin-top: 4px !important;
+    padding: 8px 12px !important;
+    border-top: 1px solid var(--border);
+  }
+  .nav-language-mobile .language-selector {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    color: var(--text);
+    font-size: 0.86rem;
+    font-weight: 650;
+  }
+  .nav-language-mobile .language-selector > .sr-only {
+    position: static;
+    width: auto;
+    height: auto;
+    overflow: visible;
+    clip: auto;
+    white-space: normal;
+  }
+  .nav-language-mobile .language-picker summary {
+    min-height: 38px;
+  }
   .nav-links a {
     display: flex;
     padding: 12px 14px;
@@ -4335,6 +4464,7 @@ fieldset.profile-image-visibility-actions {
     min-height: 480px;
     padding: 60px 18px;
   }
+  #home { margin-top: 8px; }
   .home-intro-section {
     grid-template-columns: 1fr;
     gap: 24px;
@@ -4397,6 +4527,18 @@ fieldset.profile-image-visibility-actions {
   }
   .admin-nav-link .nav-count {
     display: none;
+  }
+  .admin-nav-link .admin-account-count {
+    display: grid;
+    min-width: 18px;
+    height: 18px;
+    margin-left: 5px;
+    font-size: 0.62rem;
+  }
+  .admin-nav-link-copy {
+    flex: 0 1 auto;
+    justify-content: center;
+    gap: 4px;
   }
   .admin-logout {
     grid-column: 1 / -1;
@@ -4462,6 +4604,13 @@ fieldset.profile-image-visibility-actions {
   .download-table {
     min-width: 840px;
   }
+}
+
+@media (max-width: 520px) {
+  .admin-owner-gateway { width: 36px; height: 36px; justify-content: center; padding: 0; }
+  .admin-owner-gateway span { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .admin-owner-gateway + .admin-view-site { font-size: 0; }
+  .admin-owner-gateway + .admin-view-site i { font-size: 14px; }
 }
 
 /* Small Smartphone Screen (<= 520px) */

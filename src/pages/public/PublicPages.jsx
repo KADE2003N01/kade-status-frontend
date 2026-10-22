@@ -216,12 +216,13 @@ function Navigation({ homepage = false, homepageContent }) {
         if (event.target.closest('a')) closeMenu();
       }}>
         {navLinks}
+        <li className="nav-language-mobile"><LanguageSelector compact /></li>
       </ul>
       <div className="nav-actions">
         <a className="nav-login" href={loginHref}>
           <i className="fas fa-lock" aria-hidden="true"></i> {t(homepageContent?.loginLabel || 'Login')}
         </a>
-        <LanguageSelector compact />
+        <LanguageSelector compact className="nav-language-desktop" />
         <ThemeToggle />
         <button
           className={`hamburger${open ? ' open' : ''}`}
@@ -527,7 +528,7 @@ function Homepage() {
     <>
       <TimedNotification message={notice} tone="success" onClose={dismissNotice} />
       <Navigation homepage homepageContent={brand} />
-      <section id="home" data-home-section="hero" hidden={!hero.visible} style={{ backgroundImage: `url("${heroBackground}")` }}>
+      <section id="home" data-home-section="hero" hidden={!hero.visible} style={{ '--hero-bg': `url("${heroBackground}")` }}>
         {videoUrl && <video className="home-video" autoPlay muted loop playsInline><source src={videoUrl} type="video/mp4" /></video>}
         <div className="home-overlay"></div>
         <div className="home-wrapper">

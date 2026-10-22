@@ -20,6 +20,7 @@ import {
   AdminProfilePage,
   AdminPasswordResetPage
 } from '../pages/admin/AdminPages.jsx';
+import PlatformOwnerPage from '../pages/platform-owner/PlatformOwnerPage.jsx';
 import { API_BASE_URL, API_BASE_URLS } from '../services/api.js';
 import GlobalStyles from '../styles/GlobalStyles.jsx';
 import { LanguageProvider } from '../context/LanguageContext.jsx';
@@ -41,6 +42,8 @@ const adminPages = {
   'admin-documents.html': [AdminDocumentsPage, 'admin-page auth-pending'],
   'admin-profile.html': [AdminProfilePage, 'admin-page auth-pending'],
   'admin-accounts.html': [AdminAccountsPage, 'admin-page auth-pending'],
+  'platform-owner.html': [PlatformOwnerPage, 'admin-page auth-pending'],
+  'admin-setup-account.html': [AdminPasswordResetPage, 'auth-page'],
   'admin-reset-password.html': [AdminPasswordResetPage, 'auth-page']
 };
 const fileName = window.location.pathname.split('/').pop() || 'index.html';

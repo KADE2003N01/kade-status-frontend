@@ -5,7 +5,7 @@ const localApiHost = hostname === '127.0.0.1' ? '127.0.0.1' : 'localhost';
 const localApiUrl = `http://${localApiHost}:5000/api`;
 const isLocalHost = hostname === 'localhost' || hostname === '127.0.0.1';
 const defaultApiUrls = isLocalHost
-  ? [localApiUrl]
+  ? ['/api']
   : ['/api', liveApiUrl];
 
 export const API_BASE_URLS = [...new Set([
