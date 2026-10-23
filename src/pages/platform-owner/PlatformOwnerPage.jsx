@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '../../services/api.js';
 import TimedNotification from '../../components/TimedNotification.jsx';
 import { platformOwnerRequest } from './platformOwnerApi.js';
+import OwnerMessages from './OwnerMessages.jsx';
 import './PlatformOwnerPage.css';
 
 const roles = [
@@ -12,6 +13,13 @@ const roles = [
   ['download_manager', 'Download manager'],
   ['profile_manager', 'Profile manager']
 ];
+const bulkActionInfo = {
+  delete_all: { title: 'Delete all customer admins', phrase: 'DELETE ALL', detail: 'This permanently removes every customer admin account, including active, inactive, and pending accounts. Super-admin accounts are protected.' },
+  activate_all: { title: 'Activate all customer admins', phrase: 'ACTIVATE ALL', detail: 'This activates inactive customer admin accounts. Pending invitations and super-admin accounts are unchanged.' },
+  deactivate_all: { title: 'Deactivate all customer admins', phrase: 'DEACTIVATE ALL', detail: 'This deactivates active customer admin accounts and ends their current sessions. Pending invitations and super-admin accounts are unchanged.' },
+  reset_passwords: { title: 'Send password links to all customer admins', phrase: 'RESET PASSWORDS', detail: 'Active admins receive password-reset links and pending admins receive setup links. Inactive accounts and super-admin accounts are skipped.' },
+  assign_roles_all: { title: 'Assign roles to all customer admins', phrase: 'ASSIGN ROLES', detail: 'This replaces the current roles of every customer admin account with the selected role set. Super-admin accounts are not changed.' }
+};
 
 function formatActivityName(action = '') {
   return action.replaceAll('_', ' ');
@@ -31,6 +39,7 @@ export default function PlatformOwnerPage() {
   const [locationHash, setLocationHash] = useState(() => window.location.hash);
   const [directoryView, setDirectoryView] = useState(() => ['#admin-directory', '#recent-activity'].includes(window.location.hash));
   const [requestsView, setRequestsView] = useState(() => window.location.hash === '#requests');
+  const [messagesView, setMessagesView] = useState(() => window.location.hash === '#messages');
   const [owner, setOwner] = useState(null);
   const [admins, setAdmins] = useState([]);
   const [auditEvents, setAuditEvents] = useState([]);
@@ -51,6 +60,10 @@ export default function PlatformOwnerPage() {
   const [busy, setBusy] = useState(false);
   const [editingRolesId, setEditingRolesId] = useState(null);
   const [draftRoles, setDraftRoles] = useState([]);
+  const [bulkAction, setBulkAction] = useState('');
+  const [bulkPhrase, setBulkPhrase] = useState('');
+  const [bulkRoles, setBulkRoles] = useState(['portfolio_owner']);
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [loading, setLoading] = useState(true);
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
@@ -62,6 +75,7 @@ export default function PlatformOwnerPage() {
       setLocationHash(window.location.hash);
       setDirectoryView(['#admin-directory', '#recent-activity'].includes(window.location.hash));
       setRequestsView(window.location.hash === '#requests');
+      setMessagesView(window.location.hash === '#messages');
     };
     window.addEventListener('hashchange', syncView);
     return () => window.removeEventListener('hashchange', syncView);
@@ -69,7 +83,7 @@ export default function PlatformOwnerPage() {
 
   useEffect(() => {
     if (!directoryView) return;
-    const targetId = locationHash === '#recent-activity' ? 'recent-activity' : locationHash === '#requests' ? 'support-requests' : 'admin-directory';
+    const targetId = locationHash === '#recent-activity' ? 'recent-activity' : locationHash === '#requests' ? 'support-requests' : locationHash === '#messages' ? 'owner-messages' : 'admin-directory';
     window.requestAnimationFrame(() => document.getElementById(targetId)?.scrollIntoView({ block: 'start' }));
   }, [directoryView, requestsView, locationHash]);
 
@@ -97,6 +111,10 @@ export default function PlatformOwnerPage() {
     setInboxCounts({ requests: countResult.requests || 0, messages: countResult.messages || 0 });
     setSupportRequests(requestResult.requests || []);
   }, []);
+
+  const refreshInbox = useCallback(() => {
+    loadOwnerInbox().catch((requestError) => setError(requestError.message));
+  }, [loadOwnerInbox]);
 
   const visibleAuditEvents = auditEvents.filter((event) =>
     `${event.action || ''} ${event.actorEmail || ''} ${event.targetEmail || ''} ${JSON.stringify(event.details || {})} ${event.createdAt || ''}`
@@ -235,6 +253,28 @@ export default function PlatformOwnerPage() {
     finally { setBusy(false); }
   }
 
+  async function runBulkAction() {
+    if (!bulkAction || bulkPhrase !== bulkActionInfo[bulkAction]?.phrase) return;
+    if (bulkAction === 'assign_roles_all' && (!bulkRoles.length || bulkRoles.some((role) => !roles.some(([value]) => value === role)))) {
+      setError('Choose at least one valid role to assign.');
+      return;
+    }
+    setBulkBusy(true); setError(''); setNotice('');
+    try {
+      const result = await platformOwnerRequest('/admins/bulk-action', {
+        method: 'POST',
+        body: JSON.stringify(bulkAction === 'assign_roles_all' ? { action: bulkAction, roles: bulkRoles } : { action: bulkAction })
+      });
+      setNotice(result.message || 'Bulk action completed.');
+      setBulkAction(''); setBulkPhrase(''); setBulkRoles(['portfolio_owner']);
+      await Promise.all([loadAdmins(), loadAudit()]);
+    } catch (requestError) {
+      setError(requestError.message || 'Could not complete the bulk action.');
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
   async function signOut() {
     try {
       await apiFetch('/auth/logout', { method: 'POST', credentials: 'include', headers: sessionToken() ? { Authorization: `Bearer ${sessionToken()}` } : undefined });
@@ -255,7 +295,7 @@ export default function PlatformOwnerPage() {
         <a className={!directoryView && !requestsView ? 'is-current' : ''} href="platform-owner.html"><i className="fas fa-chart-pie" /> Overview</a>
         <a className={directoryView ? 'is-current' : ''} href="#admin-directory"><i className="fas fa-users-gear" /> Admin accounts</a>
         <a className={requestsView ? 'is-current' : ''} href="#requests"><i className="fas fa-life-ring" /> Requests<span className="owner-sidebar-count">{inboxCounts.requests}</span></a>
-        <a href="admin-messages.html"><i className="fas fa-envelope" /> Messages<span className="owner-sidebar-count">{inboxCounts.messages}</span></a>
+        <a className={messagesView ? 'is-current' : ''} href="#messages"><i className="fas fa-envelope" /> Messages<span className="owner-sidebar-count">{inboxCounts.messages}</span></a>
         <a href="admin.html"><i className="fas fa-briefcase" /> Portfolio workspace</a>
         <p className="owner-sidebar-label owner-sidebar-label-spaced">COMING SOON</p>
         <span className="owner-sidebar-disabled"><i className="fas fa-clock-rotate-left" /> Recent activity</span>
@@ -267,7 +307,7 @@ export default function PlatformOwnerPage() {
       <button className="owner-sidebar-signout" type="button" onClick={signOut}><i className="fas fa-arrow-right-from-bracket" /> Sign out</button>
     </aside>
     <div className="owner-main">
-    <section className="owner-welcome"><div><p className="owner-eyebrow">{requestsView ? 'SYSTEM SUPPORT' : directoryView ? 'ADMIN ACCESS' : 'CONTROL CENTER'}</p><h1>{requestsView ? 'Support requests' : directoryView ? 'Manage administrator access' : `Welcome, ${owner.displayName}`}</h1><p>{requestsView ? 'Review sign-in, account activation, setup-link, and password-recovery issues reported by administrators.' : directoryView ? 'Invite administrators, set their roles, manage account access, and review recent security activity.' : 'This is your owner dashboard. Get a quick overview, then open Admin accounts to manage invitations, roles, password links, and activity.'}</p></div>{directoryView && <details className="owner-invite" id="invite-admin"><summary><i className="fas fa-user-plus" /> Invite administrator</summary><form onSubmit={submitInvite}>
+    <section className="owner-welcome"><div><p className="owner-eyebrow">{requestsView ? 'SYSTEM SUPPORT' : messagesView ? 'ADMIN COMMUNICATIONS' : directoryView ? 'ADMIN ACCESS' : 'CONTROL CENTER'}</p><h1>{requestsView ? 'Support requests' : messagesView ? 'Messages' : directoryView ? 'Manage administrator access' : `Welcome, ${owner.displayName}`}</h1><p>{requestsView ? 'Review sign-in, account activation, setup-link, and password-recovery issues reported by administrators.' : messagesView ? 'Message all customer admins at once or open a private conversation, and control whether each admin can reply.' : directoryView ? 'Invite administrators, set their roles, manage account access, and review recent security activity.' : 'This is your owner dashboard. Get a quick overview, then open Admin accounts to manage invitations, roles, password links, and activity.'}</p></div>{directoryView && <details className="owner-invite" id="invite-admin"><summary><i className="fas fa-user-plus" /> Invite administrator</summary><form onSubmit={submitInvite}>
       <div className="owner-invite-heading"><div><strong>Invite an administrator</strong><small>Send a secure setup link after confirming the customer’s payment.</small></div><button className="owner-invite-close" type="button" aria-label="Close invitation form" title="Close" onClick={() => { document.getElementById('invite-admin')?.removeAttribute('open'); }}><i className="fas fa-xmark" /></button></div>
       <label>Full name<input required maxLength="120" value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} /></label>
       <label>Email address<input required type="email" maxLength="254" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></label>
@@ -279,16 +319,18 @@ export default function PlatformOwnerPage() {
     {notice && <TimedNotification message={notice} tone="success" onClose={dismissNotice} />}
     {error && <TimedNotification message={error} tone="error" onClose={dismissError} />}
 
-    {!directoryView && !requestsView && <section className="owner-stat-grid" aria-label="Admin account totals">
+    {!directoryView && !requestsView && !messagesView && <section className="owner-stat-grid" aria-label="Admin account totals">
       <article className="owner-stat"><span className="owner-stat-icon blue"><i className="fas fa-users" /></span><div><small>All admins</small><strong>{counts.total}</strong></div></article>
       <article className="owner-stat"><span className="owner-stat-icon green"><i className="fas fa-circle-check" /></span><div><small>Active</small><strong>{counts.active}</strong></div></article>
       <article className="owner-stat"><span className="owner-stat-icon amber"><i className="fas fa-envelope-open-text" /></span><div><small>Invited</small><strong>{counts.pending}</strong></div></article>
       <article className="owner-stat"><span className="owner-stat-icon gray"><i className="fas fa-user-slash" /></span><div><small>Inactive</small><strong>{counts.inactive}</strong></div></article>
     </section>}
 
-    {!directoryView && !requestsView && <section className="owner-card owner-guide"><div><p className="owner-eyebrow">HOW IT WORKS</p><h2>Manage rented administrator access</h2><p>Invite an administrator after confirming payment. They receive a one-time setup link to create their password. You can then assign a role, activate or deactivate access, and send setup or password-reset links when needed.</p><a className="owner-button owner-button-primary" href="#admin-directory"><i className="fas fa-users-gear" /> Open Admin accounts</a></div><div className="owner-guide-steps"><article><span>01</span><div><strong>Invite</strong><small>Add the administrator’s name, email, and access role.</small></div></article><article><span>02</span><div><strong>Manage access</strong><small>Change roles or switch account access on and off.</small></div></article><article><span>03</span><div><strong>Review activity</strong><small>See recent security actions and send password links.</small></div></article></div></section>}
+    {!directoryView && !requestsView && !messagesView && <section className="owner-card owner-guide"><div><p className="owner-eyebrow">HOW IT WORKS</p><h2>Manage rented administrator access</h2><p>Invite an administrator after confirming payment. They receive a one-time setup link to create their password. You can then assign a role, activate or deactivate access, and send setup or password-reset links when needed.</p><a className="owner-button owner-button-primary" href="#admin-directory"><i className="fas fa-users-gear" /> Open Admin accounts</a></div><div className="owner-guide-steps"><article><span>01</span><div><strong>Invite</strong><small>Add the administrator’s name, email, and access role.</small></div></article><article><span>02</span><div><strong>Manage access</strong><small>Change roles or switch account access on and off.</small></div></article><article><span>03</span><div><strong>Review activity</strong><small>See recent security actions and send password links.</small></div></article></div></section>}
 
     {requestsView && <section className="owner-card owner-requests" id="support-requests"><header className="owner-requests-heading"><div><p className="owner-eyebrow">ADMIN HELP INBOX</p><h2>Open support requests</h2><p>Requests from administrators who need help signing in or recovering account access.</p></div><span className="owner-audit-count">{inboxCounts.requests} open</span></header>{supportRequests.length ? <div className="owner-request-table-scroll"><table className="owner-request-table"><thead><tr><th>Administrator</th><th>Request</th><th>Message</th><th>Date / time</th><th>Action</th></tr></thead><tbody>{supportRequests.map(request => <tr key={request.id}><td><strong>{request.name}</strong><a href={`mailto:${request.email}`}>{request.email}</a></td><td>{request.category.replaceAll('_', ' ')}</td><td className="owner-request-message">{request.message}</td><td><time>{formatActivityTime(request.createdAt)}</time></td><td><button className="owner-action-button" type="button" disabled={updatingRequestId === request.id} onClick={() => updateSupportRequest(request, 'resolved')}>{updatingRequestId === request.id ? 'Saving…' : 'Mark resolved'}</button></td></tr>)}</tbody></table></div> : <p className="owner-audit-empty">There are no open requests right now.</p>}</section>}
+
+    {messagesView && <div id="owner-messages" className="owner-messages-view"><OwnerMessages onMessagesChanged={refreshInbox} /></div>}
 
     {directoryView && <>
     <section className="owner-stat-grid owner-directory-stats" aria-label="Admin account totals">
@@ -299,6 +341,23 @@ export default function PlatformOwnerPage() {
     </section>
 
     <section className="owner-card owner-directory" id="admin-directory"><div className="owner-section-heading"><div><p className="owner-eyebrow">ACCOUNT ACCESS</p><h2>Administrators</h2></div><span>{counts.total} accounts</span></div>
+      <div className="owner-bulk-actions" aria-label="Bulk administrator actions">
+        <span>Bulk actions <small>Customer admins only</small></span>
+        <button type="button" className="bulk-activate" disabled={busy || bulkBusy || !counts.total} onClick={() => { setBulkPhrase(''); setBulkAction('activate_all'); }}><i className="fas fa-user-check" /> Activate all</button>
+        <button type="button" className="bulk-deactivate" disabled={busy || bulkBusy || !counts.total} onClick={() => { setBulkPhrase(''); setBulkAction('deactivate_all'); }}><i className="fas fa-user-slash" /> Deactivate all</button>
+        <button type="button" className="bulk-reset" disabled={busy || bulkBusy || !counts.total} onClick={() => { setBulkPhrase(''); setBulkAction('reset_passwords'); }}><i className="fas fa-key" /> Reset passwords all</button>
+        <button type="button" className="bulk-assign-roles" disabled={busy || bulkBusy || !counts.total} onClick={() => { setBulkPhrase(''); setBulkRoles(['portfolio_owner']); setBulkAction('assign_roles_all'); }}><i className="fas fa-user-tag" /> Assign roles all</button>
+        <button type="button" className="bulk-delete" disabled={busy || bulkBusy || !counts.total} onClick={() => { setBulkPhrase(''); setBulkAction('delete_all'); }}><i className="fas fa-trash-can" /> Delete all</button>
+      </div>
+      {bulkAction && <div className="owner-confirm-backdrop" role="presentation"><form className="owner-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="owner-bulk-title" onSubmit={event => { event.preventDefault(); runBulkAction(); }}>
+        <span className={`owner-confirm-icon ${bulkAction === 'delete_all' ? 'danger' : ''}`}><i className={`fas ${bulkAction === 'delete_all' ? 'fa-triangle-exclamation' : bulkAction === 'reset_passwords' ? 'fa-key' : 'fa-users-gear'}`} aria-hidden="true" /></span>
+        <h3 id="owner-bulk-title">{bulkActionInfo[bulkAction].title}</h3>
+        <p>{bulkActionInfo[bulkAction].detail}</p>
+        {bulkAction === 'assign_roles_all' && <fieldset className="owner-role-checks owner-bulk-role-checks" aria-label="Roles to assign to all customer admins"><legend>Roles to assign</legend>{roles.map(([value, label]) => <label key={value}><input type="checkbox" checked={bulkRoles.includes(value)} disabled={bulkBusy} onChange={event => setBulkRoles(current => event.target.checked ? [...current, value] : current.filter(role => role !== value))} /> <span>{label}</span></label>)}<small>Choose one or more roles. Every customer admin will receive exactly these roles.</small></fieldset>}
+        {bulkAction !== 'assign_roles_all' && <><label htmlFor="owner-bulk-confirm">Type <strong>{bulkActionInfo[bulkAction].phrase}</strong> to confirm</label>
+        <input id="owner-bulk-confirm" autoFocus autoComplete="off" value={bulkPhrase} onChange={event => setBulkPhrase(event.target.value)} /></>}
+        <div className="owner-confirm-actions"><button type="button" className="owner-confirm-cancel" disabled={bulkBusy} onClick={() => { setBulkAction(''); setBulkPhrase(''); }}>Cancel</button><button type="submit" className={bulkAction === 'delete_all' ? 'owner-confirm-delete' : 'owner-confirm-submit'} disabled={bulkBusy || (bulkAction !== 'assign_roles_all' && bulkPhrase !== bulkActionInfo[bulkAction].phrase) || (bulkAction === 'assign_roles_all' && !bulkRoles.length)}>{bulkBusy ? 'Working…' : 'Confirm'}</button></div>
+      </form></div>}
       <div className="owner-filters"><label className="owner-search"><i className="fas fa-magnifying-glass" /><input type="search" placeholder="Search by name or email" value={searchInput} onChange={event => setSearchInput(event.target.value)} /></label><label className="owner-status-filter"><span>Status</span><select value={statusFilter} onChange={event => { setStatusFilter(event.target.value); setPage(1); }}><option value="all">All accounts</option><option value="active">Active</option><option value="pending">Invited</option><option value="inactive">Inactive</option></select></label></div>
       <div className="owner-table-wrap"><div className="owner-table-scroll"><table className="owner-table"><thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Status</th><th className="owner-actions-heading">Actions</th></tr></thead><tbody>{admins.map(admin => <tr key={admin.id}>
         <td className="owner-name-cell"><strong>{admin.displayName}</strong></td>

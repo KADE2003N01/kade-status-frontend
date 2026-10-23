@@ -116,6 +116,30 @@
 .owner-directory { padding: 19px 20px 0; }
 .owner-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .owner-section-heading h2 { margin: 3px 0 0; font-size: 18px; letter-spacing: -.3px; }.owner-section-heading > span { color: var(--owner-muted); font-size: 12px; }
+.owner-bulk-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 16px; padding: 12px; border: 1px solid #e8edf5; border-radius: 10px; background: #fbfcfe; }
+.owner-bulk-actions > span { display: grid; gap: 2px; margin-right: auto; color: #263954; font-size: 12px; font-weight: 750; }
+.owner-bulk-actions > span small { color: #8995a8; font-size: 10px; font-weight: 500; }
+.owner-bulk-actions button { min-height: 35px; display: inline-flex; align-items: center; justify-content: center; gap: 7px; padding: 7px 10px; border: 1px solid #dfe6f0; border-radius: 8px; background: #fff; color: #53627a; font-size: 10px; font-weight: 700; cursor: pointer; transition: background .16s ease, border-color .16s ease, color .16s ease; }
+.owner-bulk-actions button:hover:not(:disabled) { border-color: #315ce8; background: #315ce8; color: #fff; }
+.owner-bulk-actions button.bulk-delete { border-color: #f0d4d4; color: #ad4343; }
+.owner-bulk-actions button.bulk-delete:hover:not(:disabled) { border-color: #b83232; background: #b83232; color: #fff; }
+.owner-bulk-actions button:disabled { opacity: .5; cursor: not-allowed; }
+.owner-confirm-backdrop { position: fixed; z-index: 1000; inset: 0; display: grid; place-items: center; padding: 18px; background: #17243c80; backdrop-filter: blur(3px); }
+.owner-bulk-role-checks { max-height: 220px; overflow: auto; }
+.owner-confirm-dialog { width: min(440px, 100%); display: grid; gap: 12px; padding: 24px; border: 1px solid #e2e8f2; border-radius: 16px; background: #fff; box-shadow: 0 24px 70px #17243c40; }
+.owner-confirm-icon { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 12px; background: #edf2ff; color: #315ce8; }
+.owner-confirm-icon.danger { background: #fff0f0; color: #b83232; }
+.owner-confirm-dialog h3 { margin: 0; color: #20314b; font-size: 18px; }
+.owner-confirm-dialog p { margin: 0; color: #66758c; font-size: 12px; line-height: 1.55; }
+.owner-confirm-dialog label { color: #52627a; font-size: 11px; }
+.owner-confirm-dialog label strong { color: #213754; letter-spacing: .04em; }
+.owner-confirm-dialog > input { width: 100%; min-height: 42px; padding: 9px 11px; border: 1px solid #dce4ef; border-radius: 8px; outline: none; color: #20314b; font-size: 13px; }
+.owner-confirm-dialog > input:focus { border-color: #91a9f7; box-shadow: 0 0 0 3px #315ce817; }
+.owner-confirm-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 4px; }
+.owner-confirm-actions button { min-height: 37px; padding: 8px 14px; border: 1px solid #dfe6f0; border-radius: 8px; background: #fff; color: #566780; font-size: 11px; font-weight: 750; cursor: pointer; }
+.owner-confirm-actions .owner-confirm-submit { border-color: #315ce8; background: #315ce8; color: #fff; }
+.owner-confirm-actions .owner-confirm-delete { border-color: #b83232; background: #b83232; color: #fff; }
+.owner-confirm-actions button:disabled { opacity: .45; cursor: not-allowed; }
 .owner-filters { display: flex; gap: 10px; padding: 15px 0 13px; }
 .owner-search { position: relative; flex: 1; }.owner-search i { position: absolute; top: 13px; left: 12px; color: #96a2b4; font-size: 12px; }.owner-search input { padding-left: 34px; }
 .owner-status-filter { display: flex; align-items: center; gap: 9px; color: var(--owner-muted); font-size: 12px; }.owner-status-filter select { width: 140px; }
@@ -218,6 +242,8 @@
   .owner-guide { grid-template-columns: 1fr; gap: 16px; padding: 19px; }
   .owner-requests { padding: 15px 12px; }
   .owner-requests-heading { align-items: flex-start; }
+  .owner-bulk-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }.owner-bulk-actions > span { grid-column: 1 / -1; }.owner-bulk-actions button { width: 100%; padding-inline: 6px; font-size: 9px; }
+  .owner-confirm-dialog { padding: 19px; }
   .owner-directory { padding: 16px 12px 0; }.owner-table { min-width: 1080px; }.owner-filters { align-items: stretch; flex-direction: column; }.owner-status-filter { justify-content: space-between; }.owner-status-filter select { width: 65%; }
 }
 
