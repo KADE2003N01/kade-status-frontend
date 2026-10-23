@@ -44,7 +44,7 @@ export default function PlatformOwnerPage() {
   const [admins, setAdmins] = useState([]);
   const [auditEvents, setAuditEvents] = useState([]);
   const [supportRequests, setSupportRequests] = useState([]);
-  const [inboxCounts, setInboxCounts] = useState({ requests: 0, messages: 0 });
+  const [inboxCounts, setInboxCounts] = useState({ requests: 0, messages: 0, messagesIncoming: 0, messagesOutgoing: 0 });
   const [updatingRequestId, setUpdatingRequestId] = useState(null);
   const [counts, setCounts] = useState({ total: 0, active: 0, pending: 0, inactive: 0 });
   const [page, setPage] = useState(1);
@@ -108,7 +108,7 @@ export default function PlatformOwnerPage() {
       platformOwnerRequest('/inbox-counts'),
       platformOwnerRequest('/support-requests')
     ]);
-    setInboxCounts({ requests: countResult.requests || 0, messages: countResult.messages || 0 });
+    setInboxCounts({ requests: countResult.requests || 0, messages: countResult.messages || 0, messagesIncoming: countResult.messagesIncoming || 0, messagesOutgoing: countResult.messagesOutgoing || 0 });
     setSupportRequests(requestResult.requests || []);
   }, []);
 
@@ -177,6 +177,12 @@ export default function PlatformOwnerPage() {
     Promise.all([loadAudit(), loadOwnerInbox()]).catch((requestError) => { if (current) setError(requestError.message || 'Could not load owner activity.'); });
     return () => { current = false; };
   }, [owner, loadAudit, loadOwnerInbox]);
+
+  useEffect(() => {
+    if (!owner) return undefined;
+    const timer = window.setInterval(() => loadOwnerInbox().catch(() => {}), 30000);
+    return () => window.clearInterval(timer);
+  }, [owner, loadOwnerInbox]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -254,7 +260,8 @@ export default function PlatformOwnerPage() {
   }
 
   async function runBulkAction() {
-    if (!bulkAction || bulkPhrase !== bulkActionInfo[bulkAction]?.phrase) return;
+    if (!bulkAction) return;
+    if (bulkAction !== 'assign_roles_all' && bulkPhrase !== bulkActionInfo[bulkAction]?.phrase) return;
     if (bulkAction === 'assign_roles_all' && (!bulkRoles.length || bulkRoles.some((role) => !roles.some(([value]) => value === role)))) {
       setError('Choose at least one valid role to assign.');
       return;
@@ -287,7 +294,7 @@ export default function PlatformOwnerPage() {
   if (loading) return <main className="owner-page owner-loading">Checking super-admin access…</main>;
   if (!owner) return <main className="owner-page"><section className="owner-card owner-denied"><h1>Super-admin access required</h1><p>{error || 'Sign in with the super-admin account to continue.'}</p><a className="owner-button owner-button-primary" href="admin-login.html?next=platform-owner.html">Go to sign in</a></section></main>;
 
-  return <main className="owner-page owner-console">
+  return <main className={`owner-page owner-console${messagesView ? ' owner-messages-page' : ''}`}>
     <aside className="owner-sidebar" aria-label="Platform owner navigation">
       <a className="owner-brand" href="platform-owner.html"><span className="owner-brand-icon"><i className="fas fa-shield-halved" /></span><span>Platform Owner<small>Owner console</small></span></a>
       <nav className="owner-sidebar-nav">
@@ -295,7 +302,7 @@ export default function PlatformOwnerPage() {
         <a className={!directoryView && !requestsView ? 'is-current' : ''} href="platform-owner.html"><i className="fas fa-chart-pie" /> Overview</a>
         <a className={directoryView ? 'is-current' : ''} href="#admin-directory"><i className="fas fa-users-gear" /> Admin accounts</a>
         <a className={requestsView ? 'is-current' : ''} href="#requests"><i className="fas fa-life-ring" /> Requests<span className="owner-sidebar-count">{inboxCounts.requests}</span></a>
-        <a className={messagesView ? 'is-current' : ''} href="#messages"><i className="fas fa-envelope" /> Messages<span className="owner-sidebar-count">{inboxCounts.messages}</span></a>
+        <a className={messagesView ? 'is-current' : ''} href="#messages"><i className="fas fa-envelope" /> Messages<span className="owner-sidebar-count owner-sidebar-message-count" aria-label={`${inboxCounts.messagesIncoming} incoming messages and ${inboxCounts.messagesOutgoing} outgoing messages`}><span><i className="fas fa-arrow-down" aria-hidden="true" /> {inboxCounts.messagesIncoming}</span><span><i className="fas fa-arrow-up" aria-hidden="true" /> {inboxCounts.messagesOutgoing}</span></span></a>
         <a href="admin.html"><i className="fas fa-briefcase" /> Portfolio workspace</a>
         <p className="owner-sidebar-label owner-sidebar-label-spaced">COMING SOON</p>
         <span className="owner-sidebar-disabled"><i className="fas fa-clock-rotate-left" /> Recent activity</span>

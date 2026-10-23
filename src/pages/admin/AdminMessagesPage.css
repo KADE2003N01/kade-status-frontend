@@ -17,7 +17,32 @@
 .admin-message-list article.sent { align-self: flex-end; border-color: #d9e4ff; border-radius: 12px 12px 3px 12px; background: #eef3ff; }
 .admin-message-list article small { color: #8290a4; font-size: 10px; }
 .admin-message-list article p { margin: 6px 0 0; color: #3d4e67; font-size: 13px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; }
-.admin-message-compose { display: flex; align-items: flex-end; gap: 10px; padding: 13px; border-top: 1px solid var(--border); }
+.admin-message-list article p.admin-message-deleted { color: #8994a5; font-size: 11px; font-style: italic; }
+.admin-message-list article small.admin-message-edited { display: block; margin-top: 3px; font-style: italic; }
+.admin-message-compose { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 8px 10px; padding: 13px; border-top: 1px solid var(--border); }
+.admin-message-compose .message-attachment-picker { grid-column: 1 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 5px; }
+.admin-message-compose .message-attachment-action { min-height: 29px; padding: 4px 8px; border: 1px solid var(--border-strong); border-radius: 6px; background: var(--panel-solid); color: var(--text-muted); font: inherit; font-size: 10px; cursor: pointer; }
+.admin-message-compose .message-attachment-action.is-recording { border-color: #e8aaaa; background: #fff1f1; color: #b83232; }
+.admin-message-compose .message-attachment-pending { display: inline-flex; align-items: center; gap: 4px; max-width: 230px; padding: 4px 6px; border-radius: 5px; background: #f1f5fb; color: var(--text-muted); font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-message-compose .message-attachment-pending button { padding: 0; border: 0; background: transparent; color: inherit; cursor: pointer; }
+.admin-message-compose .message-attachment-pending-item { display: grid; min-width: 0; gap: 3px; }
+.admin-message-compose .message-attachment-pending-audio { display: block; width: min(300px, 100%); height: 32px; }
+.admin-message-list .message-attachment-list { display: grid; gap: 5px; max-width: 100%; margin-top: 6px; }
+.admin-message-list .message-attachment-image img,
+.admin-message-list .message-attachment-media { display: block; width: min(340px, 100%); max-height: 230px; border-radius: 7px; object-fit: contain; background: #f3f6fa; }
+.admin-message-list .message-attachment-file { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 5px 7px; border: 1px solid #dce4ef; border-radius: 6px; color: var(--accent); font-size: 11px; overflow-wrap: anywhere; }
+.admin-message-list .message-attachment-loading,
+.admin-message-list .message-attachment-unavailable { color: var(--text-muted); font-size: 10px; }
+.admin-message-list .message-attachment-playback-error { color: #a64a4a; font-size: 9px; }
+.admin-message-reply-status { display: inline-flex; align-items: center; gap: 4px; margin-top: 4px; color: #327b59; font-size: 9px; font-weight: 700; }
+.admin-message-reply-status.is-disabled { color: #a64a4a; }
+.admin-message-reply-button { display: flex; align-items: center; gap: 5px; margin-top: 6px; padding: 4px 7px; border: 1px solid #d7e2f2; border-radius: 6px; background: #fff; color: var(--accent); font: inherit; font-size: 10px; font-weight: 700; cursor: pointer; }
+.admin-message-reply-button:disabled { border-color: #e3e6ec; background: #f4f5f7; color: #9aa3b1; cursor: not-allowed; }
+.admin-message-reply-context { display: block; margin-top: 3px; color: var(--accent) !important; }
+.admin-message-replying-to { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 6px 8px; border-left: 3px solid var(--accent); border-radius: 5px; background: #f2f6ff; color: var(--text-muted); font-size: 10px; }
+.admin-message-replying-to span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-message-replying-to button { flex: 0 0 auto; border: 0; background: transparent; color: var(--text-muted); cursor: pointer; }
+.admin-message-reply-paused { grid-column: 1 / -1; margin: 0; color: #a64a4a; font-size: 10px; }
 .admin-message-compose textarea { width: 100%; min-height: 74px; resize: vertical; padding: 10px 12px; border: 1px solid var(--border-strong); border-radius: 9px; outline: none; color: var(--text); background: var(--panel-solid); font: inherit; font-size: 12px; }
 .admin-message-compose textarea:focus { border-color: var(--accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent); }
 .admin-message-compose .admin-button { flex: 0 0 auto; min-height: 40px; }
@@ -28,6 +53,8 @@
   .admin-message-threads h2 { align-self: center; flex: 0 0 auto; margin: 0 4px; }
   .admin-message-threads > button { width: auto; min-width: 155px; flex: 0 0 auto; margin: 0; }
   .admin-message-list { min-height: 280px; padding: 13px; }
-  .admin-message-compose { align-items: stretch; flex-direction: column; }
+  .admin-message-compose { grid-template-columns: minmax(0, 1fr); align-items: stretch; }
+  .admin-message-compose .message-attachment-picker { grid-column: 1; }
+  .admin-message-compose textarea { grid-column: 1; }
   .admin-message-compose .admin-button { align-self: flex-end; }
 }

@@ -45,11 +45,21 @@ export function resolveApiAssetUrl(value) {
 
 export async function apiFetch(path, options) {
   let lastError;
+  const { allowBinary = false, ...fetchOptions } = options || {};
 
   for (const baseUrl of API_BASE_URLS) {
     try {
-      const response = await fetch(`${baseUrl}${path}`, options);
+      const response = await fetch(`${baseUrl}${path}`, fetchOptions);
       const contentType = response.headers.get('content-type') || '';
+
+      if (allowBinary) {
+        if (response.ok && !contentType.toLowerCase().includes('text/html')) return response;
+        if (!contentType.toLowerCase().includes('application/json')) {
+          lastError = new Error(`The API route at ${baseUrl} did not return the requested file.`);
+          continue;
+        }
+        return response;
+      }
 
       // Document preview endpoints return PDFs; the other app endpoints return JSON.
       if (contentType.toLowerCase().includes('application/pdf')) return response;

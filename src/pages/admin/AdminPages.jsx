@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { apiFetch, resolveApiAssetUrl } from '../../services/api.js';
 import TimedNotification from '../../components/TimedNotification.jsx';
 import LanguageSelector from '../../components/LanguageSelector.jsx';
+import { discardMessageAttachments, MessageAttachmentList, MessageAttachmentPicker, uploadMessageAttachment } from '../../components/MessageAttachments.jsx';
 import PhoneNumberField, { isValidInternationalPhone } from '../../components/PhoneNumberField.jsx';
 import { getTranslation, hasTranslation, useLanguage } from '../../context/LanguageContext.jsx';
 import { getStoredSessionToken, storeSessionToken } from '../../services/adminSession.js';
@@ -975,6 +976,9 @@ function AdminMessagesContent() {
     const [messages, setMessages] = useState([]);
     const [activeThreadId, setActiveThreadId] = useState(null);
     const [body, setBody] = useState('');
+    const [replyTarget, setReplyTarget] = useState(null);
+    const messageBodyRef = useRef(null);
+    const [pendingFiles, setPendingFiles] = useState([]);
     const [loading, setLoading] = useState(true);
     const [sending, setSending] = useState(false);
     const [error, setError] = useState('');
@@ -996,20 +1000,31 @@ function AdminMessagesContent() {
 
     const activeThread = threads.find((thread) => thread.id === activeThreadId);
     const activeMessages = messages.filter((message) => message.threadId === activeThreadId);
+    const latestOwnerMessage = [...activeMessages].reverse().find((message) => message.senderRole === 'platform_owner' && !message.deletedAt);
+    const replyPermissionDenied = !owner && Boolean(activeThread) && (activeThread.replyAllowed === false || (replyTarget ? replyTarget.replyAllowed === false || replyTarget.replyAllowed === 0 : latestOwnerMessage && (latestOwnerMessage.replyAllowed === false || latestOwnerMessage.replyAllowed === 0)));
 
     async function sendMessage(event) {
         event.preventDefault();
-        if (!body.trim() || sending) return;
+        if ((!body.trim() && !pendingFiles.length) || sending) return;
         setSending(true); setError('');
+        const uploadedIds = [];
         try {
+            for (const file of pendingFiles) uploadedIds.push((await uploadMessageAttachment(file)).id);
             const response = await apiRequest('/messages', {
                 method: 'POST', silentNotification: true,
-                body: JSON.stringify({ body: body.trim(), ...(owner ? { adminId: activeThread?.adminId } : {}) })
+                body: JSON.stringify({ body: body.trim(), attachmentIds: uploadedIds, ...(!owner && replyTarget ? { replyToMessageId: replyTarget.id } : {}), ...(owner ? { adminId: activeThread?.adminId } : {}) })
             });
             await responseJson(response, 'Could not send message.');
             setBody('');
+            setPendingFiles([]);
+            setReplyTarget(null);
             await loadMessages();
-        } catch (requestError) { setError(displayError(requestError, 'Could not send message.')); }
+        } catch (requestError) {
+            if (uploadedIds.length) {
+                try { await discardMessageAttachments(uploadedIds); } catch { /* Keep the original send error. */ }
+            }
+            setError(displayError(requestError, 'Could not send message.'));
+        }
         finally { setSending(false); }
     }
 
@@ -1017,13 +1032,13 @@ function AdminMessagesContent() {
         <section className="admin-heading"><div><p className="admin-eyebrow">PRIVATE SUPPORT</p><h1>Messages</h1><p className="admin-subheading">{owner ? 'Read and reply to messages from administrator accounts.' : 'Contact the platform owner about your administrator account or workspace.'}</p></div></section>
         {error && <p className="admin-messages-error" role="alert">{error}</p>}
         <section className={`admin-panel admin-messages-panel${owner ? ' has-threads' : ''}`}>
-            {owner && <aside className="admin-message-threads"><h2>Admin conversations</h2>{threads.length ? threads.map((thread) => <button type="button" key={thread.id} className={activeThreadId === thread.id ? 'active' : ''} onClick={() => setActiveThreadId(thread.id)}><strong>{thread.adminName}</strong><small>{thread.adminEmail}</small></button>) : <p>No admin messages yet.</p>}</aside>}
+            {owner && <aside className="admin-message-threads"><h2>Admin conversations</h2>{threads.length ? threads.map((thread) => <button type="button" key={thread.id} className={activeThreadId === thread.id ? 'active' : ''} onClick={() => { setActiveThreadId(thread.id); setReplyTarget(null); }}><strong>{thread.adminName}</strong><small>{thread.adminEmail}</small></button>) : <p>No admin messages yet.</p>}</aside>}
             <div className="admin-message-conversation">
                 <header><strong>{owner ? activeThread?.adminName || 'Choose a conversation' : 'Platform owner'}</strong><small>{owner ? activeThread?.adminEmail || 'Messages from rented administrators' : session?.displayName}</small></header>
                 <div className="admin-message-list" aria-live="polite">
-                    {loading ? <p>Loading messages…</p> : activeMessages.length ? activeMessages.map((message) => <article key={message.id} className={message.senderEmail === session?.email ? 'sent' : 'received'}><small>{message.senderName || message.senderEmail} · {new Date(message.createdAt).toLocaleString()}</small><p>{message.body}</p></article>) : <p className="admin-message-empty">{owner ? 'No messages in this conversation yet.' : 'Start a conversation with the platform owner.'}</p>}
+                    {loading ? <p>Loading messages…</p> : activeMessages.length ? activeMessages.map((message) => <article key={message.id} className={message.senderEmail === session?.email ? 'sent' : 'received'}><small>{message.senderName || message.senderEmail} · {new Date(message.createdAt).toLocaleString()}</small>{message.replyToMessageId && <small className="admin-message-reply-context"><i className="fas fa-reply" /> Reply to a message</small>}{message.deletedAt ? <p className="admin-message-deleted">This message was cleared</p> : <><p>{message.body}</p><MessageAttachmentList attachments={message.attachments} />{message.editedAt && <small className="admin-message-edited">Edited</small>}{message.senderRole === 'platform_owner' && <><small className={`admin-message-reply-status${message.replyAllowed === false || message.replyAllowed === 0 ? ' is-disabled' : ''}`}><i className={`fas ${message.replyAllowed === false || message.replyAllowed === 0 ? 'fa-lock' : 'fa-reply'}`} aria-hidden="true" /> {message.replyAllowed === false || message.replyAllowed === 0 ? 'Replies are not allowed' : 'You can reply to this message'}</small>{!owner && <button type="button" className="admin-message-reply-button" disabled={message.replyAllowed === false || message.replyAllowed === 0 || activeThread?.replyAllowed === false} title={message.replyAllowed === false || message.replyAllowed === 0 ? 'Replies are disabled for this message' : activeThread?.replyAllowed === false ? 'All replies are paused for this conversation' : 'Reply to this message'} onClick={() => { setReplyTarget(message); messageBodyRef.current?.focus(); }}><i className="fas fa-reply" aria-hidden="true" /> Reply</button>}</>}</>}</article>) : <p className="admin-message-empty">{owner ? 'No messages in this conversation yet.' : 'Start a conversation with the platform owner.'}</p>}
                 </div>
-                <form className="admin-message-compose" onSubmit={sendMessage}><label className="sr-only" htmlFor="admin-message-body">Write a message</label><textarea id="admin-message-body" rows="3" maxLength="3000" value={body} onChange={(event) => setBody(event.target.value)} placeholder="Write your message…" disabled={owner && !activeThread} required /><button className="admin-button primary" type="submit" disabled={sending || !body.trim() || (owner && !activeThread)}><i className={`fas ${sending ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`} /> {sending ? 'Sending…' : 'Send message'}</button></form>
+                <form className="admin-message-compose" onSubmit={sendMessage}>{replyTarget && <div className="admin-message-replying-to"><span><i className="fas fa-reply" /> Replying to {replyTarget.senderName || 'platform owner'}: {(replyTarget.body || 'attachment').slice(0, 90)}</span><button type="button" onClick={() => setReplyTarget(null)} aria-label="Cancel reply"><i className="fas fa-xmark" /></button></div>}{replyPermissionDenied && <p className="admin-message-reply-paused">Replies are disabled for this message or conversation.</p>}<label className="sr-only" htmlFor="admin-message-body">Write a message</label><textarea ref={messageBodyRef} id="admin-message-body" rows="3" maxLength="3000" value={body} onChange={(event) => setBody(event.target.value)} placeholder={replyTarget ? 'Write your reply…' : 'Write your message…'} disabled={(owner && !activeThread) || replyPermissionDenied} required={!pendingFiles.length} /><MessageAttachmentPicker files={pendingFiles} onFilesChange={setPendingFiles} disabled={sending || (owner && !activeThread) || replyPermissionDenied} onError={setError} /><button className="admin-button primary" type="submit" disabled={sending || replyPermissionDenied || (!body.trim() && !pendingFiles.length) || (owner && !activeThread)}><i className={`fas ${sending ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`} /> {sending ? 'Sending…' : 'Send'}</button></form>
             </div>
         </section>
     </div>;
