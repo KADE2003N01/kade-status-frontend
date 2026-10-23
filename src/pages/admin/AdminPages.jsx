@@ -7,6 +7,7 @@ import { getTranslation, hasTranslation, useLanguage } from '../../context/Langu
 import { getStoredSessionToken, storeSessionToken } from '../../services/adminSession.js';
 import { AdminLoginPage as AdminLoginView, AdminPasswordResetPage as AdminPasswordResetView } from './auth/AdminAuthPages.jsx';
 import './AdminAccountsPage.css';
+import './AdminMessagesPage.css';
 
 export function AdminLoginPage() { return <AdminLoginView />; }
 export function AdminPasswordResetPage() { return <AdminPasswordResetView />; }
@@ -136,7 +137,7 @@ function useAdminSession() {
                 const email = typeof result.user?.email === 'string' ? result.user.email.trim() : '';
                 if (!displayName || !email) throw new Error('The admin profile is missing a name or email address.');
                 if (active) {
-                    setSession({ displayName, email, role: result.user?.role || 'portfolio_owner' });
+                    setSession({ displayName, email, role: result.user?.role || 'portfolio_owner', roles: Array.isArray(result.user?.roles) ? result.user.roles : [result.user?.role || 'portfolio_owner'] });
                     document.body.classList.remove('auth-pending');
                 }
             } catch (error) {
@@ -294,9 +295,11 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
     const [notification, setNotification] = useState(null);
     const [publishedDocumentCount, setPublishedDocumentCount] = useState(0);
     const [adminAccountCount, setAdminAccountCount] = useState(null);
+    const [messageCount, setMessageCount] = useState(0);
     const dismissNotification = useCallback(() => setNotification(null), []);
     const initials = session.displayName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
-    const profileImage = useAdminProfileImage(['platform_owner', 'portfolio_owner', 'profile_manager'].includes(session.role));
+    const hasRole = (role) => (session.roles || [session.role]).includes(role);
+    const profileImage = useAdminProfileImage(hasRole('platform_owner') || hasRole('portfolio_owner') || hasRole('profile_manager'));
     useEffect(() => {
         let active = true;
         apiRequest('/documents')
@@ -311,7 +314,7 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
     }, []);
     useEffect(() => {
         let active = true;
-        if (session.role !== 'platform_owner') { setAdminAccountCount(null); return () => { active = false; }; }
+        if (!(session.roles || [session.role]).includes('platform_owner')) { setAdminAccountCount(null); return () => { active = false; }; }
         apiRequest('/auth/admin-users')
             .then((response) => responseJson(response, 'Could not load administrator account count.'))
             .then((result) => {
@@ -319,20 +322,30 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
             })
             .catch((error) => console.error('Could not load administrator account count:', error));
         return () => { active = false; };
-    }, [session.role]);
+    }, [session.role, session.roles]);
+    useEffect(() => {
+        let active = true;
+        apiRequest('/messages/unread-count', { silentNotification: true })
+            .then((response) => responseJson(response, 'Could not load unread message count.'))
+            .then((result) => { if (active) setMessageCount(Number(result.count) || 0); })
+            .catch((error) => console.error('Could not load unread message count:', error));
+        return () => { active = false; };
+    }, []);
     const links = [
         { id: 'overview', href: 'admin.html', icon: 'fa-chart-pie', text: 'Overview' },
         { id: 'downloads', href: 'admin-downloads.html', icon: 'fa-download', text: 'Downloads' },
         { id: 'homepage', href: 'admin-homepage.html', icon: 'fa-pen-to-square', text: 'Landing page' },
         { id: 'documents', href: 'admin-documents.html', icon: 'fa-file-arrow-up', text: 'Documents' },
-        { id: 'profile', href: 'admin-profile.html', icon: 'fa-id-badge', text: 'My profile' }
+        { id: 'profile', href: 'admin-profile.html', icon: 'fa-id-badge', text: 'My profile' },
+        { id: 'messages', href: 'admin-messages.html', icon: 'fa-envelope', text: 'Messages' }
     ];
     const note = {
         overview: 'Review visitor activity and open the page responsible for each task.',
         downloads: 'Review visitor details and document request status.',
         homepage: 'Landing-page edits are saved on the server and visible to every visitor.',
         documents: 'Published documents are stored privately and require visitor details before viewing or downloading.',
-        profile: 'Update your administrator details and profile image shown across the admin workspace.'
+        profile: 'Update your administrator details and profile image shown across the admin workspace.',
+        messages: 'Send a private message to the platform owner and read their replies.'
     }[active];
 
     useEffect(() => {
@@ -371,9 +384,10 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
                 <aside className="admin-sidebar" aria-label="Admin sections">
                     <p className="admin-nav-label">{t('WORKSPACE')}</p>
                     {links.filter((link) => {
-                        if (session.role === 'platform_owner' || session.role === 'portfolio_owner') return true;
+                        if (link.id === 'messages') return true;
+                        if (hasRole('platform_owner') || hasRole('portfolio_owner')) return true;
                         const permissions = { downloads: 'download_manager', homepage: 'content_manager', documents: 'document_manager', profile: 'profile_manager' };
-                        return session.role === permissions[link.id];
+                        return hasRole(permissions[link.id]);
                     }).map((link) => (
                         <a key={link.id} className={`admin-nav-link${active === link.id ? ' active' : ''}`} href={link.href}>
                             <i className={`fas ${link.icon}`} aria-hidden="true" />
@@ -382,9 +396,10 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
                                 : t(link.text)}
                             {link.id === 'downloads' && <span className="nav-count">{downloadCount}</span>}
                             {link.id === 'documents' && <span className="nav-count" aria-label={`${publishedDocumentCount} published CVs and certificates`}>{publishedDocumentCount}</span>}
+                            {link.id === 'messages' && <span className="nav-count" aria-label={`${messageCount} unread messages`}>{messageCount}</span>}
                         </a>
                     ))}
-                    {session.role === 'platform_owner' && <a className="admin-nav-link" href="platform-owner.html"><i className="fas fa-shield-halved" aria-hidden="true" /><span>{t('Control Admins')}</span></a>}
+                    {hasRole('platform_owner') && <a className="admin-nav-link" href="platform-owner.html"><i className="fas fa-shield-halved" aria-hidden="true" /><span>{t('Control Admins')}</span></a>}
                     <AdminThemeToggle />
                     <LanguageSelector />
                     <div className="admin-sidebar-note">
@@ -414,12 +429,14 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
 
 function AdminPage({ active, children }) {
     const auth = useAdminSession();
-    const allowedRoles = { overview: ['platform_owner', 'portfolio_owner'], downloads: ['platform_owner', 'portfolio_owner', 'download_manager'], homepage: ['platform_owner', 'portfolio_owner', 'content_manager'], documents: ['platform_owner', 'portfolio_owner', 'document_manager'], profile: ['platform_owner', 'portfolio_owner', 'profile_manager'], accounts: ['platform_owner'] };
-    const canAccess = !allowedRoles[active] || allowedRoles[active].includes(auth.session?.role);
-    const downloadData = useAdminDownloads(auth.ready && Boolean(auth.session) && ['platform_owner', 'portfolio_owner', 'download_manager'].includes(auth.session?.role));
+    const allowedRoles = { overview: ['platform_owner', 'portfolio_owner'], downloads: ['platform_owner', 'portfolio_owner', 'download_manager'], homepage: ['platform_owner', 'portfolio_owner', 'content_manager'], documents: ['platform_owner', 'portfolio_owner', 'document_manager'], profile: ['platform_owner', 'portfolio_owner', 'profile_manager'], accounts: ['platform_owner'], messages: ['platform_owner', 'portfolio_owner', 'content_manager', 'document_manager', 'download_manager', 'profile_manager'] };
+    const sessionRoles = auth.session?.roles || [auth.session?.role];
+    const canAccess = !allowedRoles[active] || sessionRoles.includes('platform_owner') || allowedRoles[active].some(role => sessionRoles.includes(role));
+    const downloadData = useAdminDownloads(auth.ready && Boolean(auth.session) && ['platform_owner', 'portfolio_owner', 'download_manager'].some(role => sessionRoles.includes(role)));
     useEffect(() => {
         if (auth.ready && auth.session && !canAccess) {
-            const destination = { download_manager: 'admin-downloads.html', content_manager: 'admin-homepage.html', document_manager: 'admin-documents.html', profile_manager: 'admin-profile.html' }[auth.session.role] || 'admin.html';
+            const roles = auth.session.roles || [auth.session.role];
+            const destination = roles.includes('download_manager') ? 'admin-downloads.html' : roles.includes('content_manager') ? 'admin-homepage.html' : roles.includes('document_manager') ? 'admin-documents.html' : roles.includes('profile_manager') ? 'admin-profile.html' : 'admin.html';
             window.location.replace(destination);
         }
     }, [auth.ready, auth.session, canAccess]);
@@ -948,6 +965,70 @@ export function AdminAccountsPage() {
     return <AdminPage active="accounts"><AdminAccountsContent /></AdminPage>;
 }
 
+export function AdminMessagesPage() {
+    return <AdminPage active="messages"><AdminMessagesContent /></AdminPage>;
+}
+
+function AdminMessagesContent() {
+    const session = useContext(AdminSessionContext);
+    const [threads, setThreads] = useState([]);
+    const [messages, setMessages] = useState([]);
+    const [activeThreadId, setActiveThreadId] = useState(null);
+    const [body, setBody] = useState('');
+    const [loading, setLoading] = useState(true);
+    const [sending, setSending] = useState(false);
+    const [error, setError] = useState('');
+    const owner = (session?.roles || [session?.role]).includes('platform_owner');
+
+    const loadMessages = useCallback(async () => {
+        const response = await apiRequest('/messages', { silentNotification: true });
+        const result = await responseJson(response, 'Could not load messages.');
+        const nextThreads = result.threads || [];
+        setThreads(nextThreads);
+        setMessages(result.messages || []);
+        setActiveThreadId((current) => nextThreads.some((thread) => thread.id === current) ? current : nextThreads[0]?.id || null);
+    }, []);
+
+    useEffect(() => {
+        loadMessages().catch((requestError) => setError(displayError(requestError, 'Could not load messages.')))
+            .finally(() => setLoading(false));
+    }, [loadMessages]);
+
+    const activeThread = threads.find((thread) => thread.id === activeThreadId);
+    const activeMessages = messages.filter((message) => message.threadId === activeThreadId);
+
+    async function sendMessage(event) {
+        event.preventDefault();
+        if (!body.trim() || sending) return;
+        setSending(true); setError('');
+        try {
+            const response = await apiRequest('/messages', {
+                method: 'POST', silentNotification: true,
+                body: JSON.stringify({ body: body.trim(), ...(owner ? { adminId: activeThread?.adminId } : {}) })
+            });
+            await responseJson(response, 'Could not send message.');
+            setBody('');
+            await loadMessages();
+        } catch (requestError) { setError(displayError(requestError, 'Could not send message.')); }
+        finally { setSending(false); }
+    }
+
+    return <div className="admin-messages-page">
+        <section className="admin-heading"><div><p className="admin-eyebrow">PRIVATE SUPPORT</p><h1>Messages</h1><p className="admin-subheading">{owner ? 'Read and reply to messages from administrator accounts.' : 'Contact the platform owner about your administrator account or workspace.'}</p></div></section>
+        {error && <p className="admin-messages-error" role="alert">{error}</p>}
+        <section className={`admin-panel admin-messages-panel${owner ? ' has-threads' : ''}`}>
+            {owner && <aside className="admin-message-threads"><h2>Admin conversations</h2>{threads.length ? threads.map((thread) => <button type="button" key={thread.id} className={activeThreadId === thread.id ? 'active' : ''} onClick={() => setActiveThreadId(thread.id)}><strong>{thread.adminName}</strong><small>{thread.adminEmail}</small></button>) : <p>No admin messages yet.</p>}</aside>}
+            <div className="admin-message-conversation">
+                <header><strong>{owner ? activeThread?.adminName || 'Choose a conversation' : 'Platform owner'}</strong><small>{owner ? activeThread?.adminEmail || 'Messages from rented administrators' : session?.displayName}</small></header>
+                <div className="admin-message-list" aria-live="polite">
+                    {loading ? <p>Loading messages…</p> : activeMessages.length ? activeMessages.map((message) => <article key={message.id} className={message.senderEmail === session?.email ? 'sent' : 'received'}><small>{message.senderName || message.senderEmail} · {new Date(message.createdAt).toLocaleString()}</small><p>{message.body}</p></article>) : <p className="admin-message-empty">{owner ? 'No messages in this conversation yet.' : 'Start a conversation with the platform owner.'}</p>}
+                </div>
+                <form className="admin-message-compose" onSubmit={sendMessage}><label className="sr-only" htmlFor="admin-message-body">Write a message</label><textarea id="admin-message-body" rows="3" maxLength="3000" value={body} onChange={(event) => setBody(event.target.value)} placeholder="Write your message…" disabled={owner && !activeThread} required /><button className="admin-button primary" type="submit" disabled={sending || !body.trim() || (owner && !activeThread)}><i className={`fas ${sending ? 'fa-spinner fa-spin' : 'fa-paper-plane'}`} /> {sending ? 'Sending…' : 'Send message'}</button></form>
+            </div>
+        </section>
+    </div>;
+}
+
 function AdminAccountsContent() {
     const { t } = useLanguage();
     const [admins, setAdmins] = useState([]);
@@ -1046,7 +1127,7 @@ function ProfileContent() {
     const [profileFeedback, setProfileFeedback] = useState({ message: '', error: false });
     const [uploadingProfile, setUploadingProfile] = useState(false);
     const [imageVisibility, setImageVisibility] = useState('admin');
-    const canPublishPublicProfile = session.role === 'platform_owner';
+    const canPublishPublicProfile = (session.roles || [session.role]).includes('platform_owner');
     const adminProfileImage = useAdminProfileImage();
     const now = useAdminClock();
     const today = new Intl.DateTimeFormat(document.documentElement.lang || 'en', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' }).format(now);

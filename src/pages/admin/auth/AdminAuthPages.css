@@ -1,4 +1,7 @@
 .auth-feedback.error { color: #b33c3c; }
+.admin-support-card .auth-form > input, .admin-support-card .auth-form > select, .admin-support-card .auth-form > textarea { width: 100%; min-height: 42px; padding: 10px 12px; border: 1px solid #dce4ef; border-radius: 8px; outline: none; color: #263750; background: #f8faff; font: inherit; font-size: 13px; }
+.admin-support-card .auth-form > textarea { min-height: 110px; resize: vertical; }
+.admin-support-card .auth-form > input:focus, .admin-support-card .auth-form > select:focus, .admin-support-card .auth-form > textarea:focus { border-color: #91a9f7; box-shadow: 0 0 0 3px #315ce817; }
 .auth-input-wrap > .auth-password-visibility { width: 40px; min-width: 40px; height: 40px; display: grid; place-items: center; border: 0; border-radius: 8px; color: #78869a; background: transparent; cursor: pointer; }
 .auth-input-wrap > .auth-password-visibility:hover { color: #315ce8; background: #f1f5ff; }
 .auth-password-hint { margin: -7px 0 2px; color: #748198; font-size: 12px; line-height: 1.45; }
