@@ -358,11 +358,15 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
     }, [session.role, session.roles]);
     useEffect(() => {
         let active = true;
-        apiRequest('/messages/unread-count', { silentNotification: true })
-            .then((response) => responseJson(response, 'Could not load unread message count.'))
-            .then((result) => { if (active) setMessageCount(Number(result.count) || 0); })
-            .catch((error) => console.error('Could not load unread message count:', error));
-        return () => { active = false; };
+        const loadUnreadCount = () => {
+            apiRequest('/messages/unread-count', { silentNotification: true })
+                .then((response) => responseJson(response, 'Could not load unread message count.'))
+                .then((result) => { if (active) setMessageCount(Number(result.count) || 0); })
+                .catch(() => { /* Keep the last badge value if the count endpoint is temporarily unavailable. */ });
+        };
+        loadUnreadCount();
+        const intervalId = window.setInterval(loadUnreadCount, 15000);
+        return () => { active = false; window.clearInterval(intervalId); };
     }, []);
     const links = [
         { id: 'overview', href: 'admin.html', icon: 'fa-chart-pie', text: 'Overview' },

@@ -373,7 +373,7 @@ export default function PlatformOwnerPage() {
       </div>
       {navOpen && <button className="owner-nav-backdrop" type="button" aria-label="Close navigation" onClick={() => setNavOpen(false)} />}
       <nav id="owner-sidebar-nav" className="owner-sidebar-nav">
-        <div className="owner-mobile-nav-heading"><p className="owner-sidebar-label">WORKSPACE</p><button className="owner-mobile-nav-close" type="button" aria-label="Close navigation" title="Close navigation" onClick={() => { setNavOpen(false); setToolsOpen(false); setHelpOpen(false); }}><i className="fas fa-xmark" aria-hidden="true" /></button></div>
+        <div className="owner-mobile-nav-heading"><p className="owner-sidebar-label">WORKSPACE</p></div>
         <a className={!directoryView && !requestsView && !messagesView ? 'is-current' : ''} href="platform-owner.html" title="Overview" onClick={collapseOwnerNavigation}><i className="fas fa-chart-pie" /><span>Overview</span></a>
         <a className={directoryView ? 'is-current' : ''} href="#admin-directory" title="Admin accounts" onClick={collapseOwnerNavigation}><i className="fas fa-users-gear" /><span>Admin accounts</span></a>
         <a className={requestsView ? 'is-current' : ''} href="#requests" title="Requests" onClick={collapseOwnerNavigation}><i className="fas fa-life-ring" /><span>Requests</span><span className="owner-sidebar-count">{inboxCounts.requests}</span></a>
@@ -381,8 +381,8 @@ export default function PlatformOwnerPage() {
         <a href="admin.html" title="Portfolio workspace" onClick={collapseOwnerNavigation}><i className="fas fa-briefcase" /><span>Portfolio workspace</span></a>
         <button className={`owner-mobile-tools-trigger${toolsOpen ? ' is-active' : ''}`} type="button" aria-expanded={toolsOpen} aria-controls="owner-tools-panel" onClick={() => { setToolsOpen((open) => !open); setHelpOpen(false); }}><i className={`fas ${toolsOpen ? 'fa-xmark' : 'fa-sliders'}`} aria-hidden="true" /><span>Tools</span></button>
         <button className="owner-mobile-theme-trigger" type="button" aria-pressed={theme === 'dark'} onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}><i className={`fas ${theme === 'dark' ? 'fa-sun' : 'fa-moon'}`} aria-hidden="true" /><span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span></button>
+        <button className="owner-sidebar-signout" type="button" title="Sign out" onClick={signOut}><LogoutIcon /><span>Sign out</span></button>
       </nav>
-      <button className="owner-sidebar-signout" type="button" title="Sign out" onClick={signOut}><LogoutIcon /><span>Sign out</span></button>
     </aside>
     <div className="owner-main">
     <section className="owner-welcome"><div className="owner-welcome-heading"><div><p className="owner-eyebrow">{requestsView ? 'SYSTEM SUPPORT' : messagesView ? 'CHAT ROOM' : directoryView ? 'ADMIN ACCESS' : 'CONTROL CENTER'}</p><h1>{requestsView ? 'Support requests' : messagesView ? 'Chat' : directoryView ? 'Manage administrator access' : `Welcome, ${owner.displayName}`}</h1><p>{requestsView ? 'Review sign-in, account activation, setup-link, and password-recovery issues reported by administrators.' : messagesView ? 'Chat privately or broadcast to all customer admins, and control whether each admin can reply.' : directoryView ? 'Invite administrators, set their roles, manage account access, and review recent security activity.' : 'This is your owner dashboard. Get a quick overview, then open Admin accounts to manage invitations, roles, password links, and activity.'}</p></div><div className="owner-top-corner">
