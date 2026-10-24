@@ -3,6 +3,7 @@ import { apiFetch } from '../../services/api.js';
 import TimedNotification from '../../components/TimedNotification.jsx';
 import { platformOwnerRequest } from './platformOwnerApi.js';
 import OwnerMessages from './OwnerMessages.jsx';
+import LogoutIcon from '../../components/LogoutIcon.jsx';
 import './PlatformOwnerPage.css';
 
 const roles = [
@@ -65,6 +66,25 @@ export default function PlatformOwnerPage() {
   const [bulkRoles, setBulkRoles] = useState(['portfolio_owner']);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [navOpen, setNavOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
+  const [helpPage, setHelpPage] = useState('faq');
+  const [railCollapsed, setRailCollapsed] = useState(() => {
+    try {
+      // Start collapsed when arriving from the admin workspace (or any page other
+      // than the owner console itself), so the console opens wide on first paint.
+      const referrer = document.referrer || '';
+      const fromAdminWorkspace = referrer.includes('admin.html') && !referrer.includes('platform-owner.html');
+      if (fromAdminWorkspace) return true;
+      return window.localStorage.getItem('kade-owner-rail') === 'collapsed';
+    } catch { return false; }
+  });
+
+  useEffect(() => {
+    try { window.localStorage.setItem('kade-owner-rail', railCollapsed ? 'collapsed' : 'open'); } catch { /* ignore */ }
+  }, [railCollapsed]);
+  const [theme, setTheme] = useState(() => { try { return window.localStorage.getItem('kade-owner-theme') === 'dark' ? 'dark' : 'light'; } catch { return 'light'; } });
   const [notice, setNotice] = useState('');
   const [error, setError] = useState('');
   const dismissNotice = useCallback(() => setNotice(''), []);
@@ -76,10 +96,56 @@ export default function PlatformOwnerPage() {
       setDirectoryView(['#admin-directory', '#recent-activity'].includes(window.location.hash));
       setRequestsView(window.location.hash === '#requests');
       setMessagesView(window.location.hash === '#messages');
+      setNavOpen(false);
+      setToolsOpen(false);
+      setHelpOpen(false);
     };
     window.addEventListener('hashchange', syncView);
-    return () => window.removeEventListener('hashchange', syncView);
-  }, []);
+    window.addEventListener('click', handleOutsideClick);
+    return () => { window.removeEventListener('hashchange', syncView); window.removeEventListener('click', handleOutsideClick); };
+  }, [toolsOpen, helpOpen]);
+
+  function handleOutsideClick(event) {
+    if (!toolsOpen && !helpOpen) return;
+    if (event.target.closest?.('.owner-tools-menu, .owner-mobile-tools-trigger')) return;
+    setToolsOpen(false);
+    setHelpOpen(false);
+  }
+
+  function collapseOwnerNavigation() {
+    setNavOpen(false);
+    setRailCollapsed(true);
+    try { window.localStorage.setItem('kade-owner-rail', 'collapsed'); } catch { /* Keep navigation available when storage is disabled. */ }
+  }
+
+  const chatTools = [
+    { href: '#recent-activity', icon: 'fa-clock-rotate-left', label: 'Recent activity' },
+    { href: '#admin-directory', icon: 'fa-users-gear', label: 'Admin directory' },
+    { href: '#support-requests', icon: 'fa-life-ring', label: 'Support inbox' },
+    { href: 'admin.html', icon: 'fa-briefcase', label: 'Portfolio workspace' },
+    { href: '#messages', icon: 'fa-comment', label: 'Chat room' }
+  ];
+
+  const ownerHelpGuide = [
+    { title: '1 · Overview dashboard', body: 'The landing page shows live totals of every admin account: all, active, invited, and inactive. Use it as your daily health check before working in any section.' },
+    { title: '2 · Inviting an administrator', body: 'Open Admin accounts, click Invite administrator, and fill in the name, email, and access roles. After confirming the customer payment, sending the form emails them a one-time setup link to create their own password.' },
+    { title: '3 · Managing access', body: 'Each account row has a status toggle to activate or deactivate access instantly. Deactivated accounts cannot sign in, and their current sessions end immediately.' },
+    { title: '4 · Roles and permissions', body: 'Roles control what each admin can reach: Portfolio owner, Content manager, Document manager, Download manager, and Profile manager. Super admin has every permission and is always protected from bulk actions.' },
+    { title: '5 · Password and setup links', body: 'Pending accounts receive setup links; active accounts receive password-reset links. Send them from any account row, or use "Reset passwords all" to email every active customer admin at once.' },
+    { title: '6 · Bulk actions', body: 'Activate all, Deactivate all, Reset passwords all, Assign roles all, and Delete all target customer admins only — super-admin accounts are always skipped for safety. Destructive actions require typing a confirmation phrase.' },
+    { title: '7 · Chat room', body: 'Open Chat to message admins privately or broadcast to all active admins or a whole role. Each message stores its own reply permission, and the muted-admins panel lets you allow or stop replies per admin or role.' },
+    { title: '8 · Support requests', body: 'When an admin reports a sign-in or account problem, it lands in Requests. Fix the underlying issue, then click Mark resolved to clear it from the inbox.' },
+    { title: '9 · Security history', body: 'Every access change is recorded in Recent access activity below the admins table. Search it by action, admin, or email, and delete individual records or clear all history when needed.' },
+    { title: '10 · Data today and next', body: 'Roles currently apply to this shared portfolio. Per-customer data separation arrives with the next multi-tenant phase, so one customer’s admin will only ever see their own content.' }
+  ];
+
+  const chatHelpTopics = [
+    { title: 'Start a private chat', body: 'Pick an admin from the conversation list on the left, then type your message and press Send.' },
+    { title: 'Broadcast a message', body: 'Choose "All active admins" or a role in the Send-to selector so one copy lands in every matching conversation.' },
+    { title: 'Control replies', body: 'Use the reply toggles to allow or stop admin replies, or open the muted-admins panel to manage access per admin or role.' },
+    { title: 'Attach files, images, or voice notes', body: 'Use the attachment buttons next to the composer to add files, photos, or a recorded voice note before sending.' },
+    { title: 'Manage sent messages', body: 'Open Manage to select and clear sent messages, or edit and clear any bubble from its own controls.' }
+  ];
 
   useEffect(() => {
     if (!directoryView) return;
@@ -170,6 +236,10 @@ export default function PlatformOwnerPage() {
     })();
     return () => { current = false; };
   }, []);
+
+  useEffect(() => {
+    try { window.localStorage.setItem('kade-owner-theme', theme); } catch { /* Private browsing can refuse storage. */ }
+  }, [theme]);
 
   useEffect(() => {
     if (!owner) return;
@@ -294,34 +364,56 @@ export default function PlatformOwnerPage() {
   if (loading) return <main className="owner-page owner-loading">Checking super-admin access…</main>;
   if (!owner) return <main className="owner-page"><section className="owner-card owner-denied"><h1>Super-admin access required</h1><p>{error || 'Sign in with the super-admin account to continue.'}</p><a className="owner-button owner-button-primary" href="admin-login.html?next=platform-owner.html">Go to sign in</a></section></main>;
 
-  return <main className={`owner-page owner-console${messagesView ? ' owner-messages-page' : ''}`}>
-    <aside className="owner-sidebar" aria-label="Platform owner navigation">
-      <a className="owner-brand" href="platform-owner.html"><span className="owner-brand-icon"><i className="fas fa-shield-halved" /></span><span>Platform Owner<small>Owner console</small></span></a>
-      <nav className="owner-sidebar-nav">
-        <p className="owner-sidebar-label">WORKSPACE</p>
-        <a className={!directoryView && !requestsView ? 'is-current' : ''} href="platform-owner.html"><i className="fas fa-chart-pie" /> Overview</a>
-        <a className={directoryView ? 'is-current' : ''} href="#admin-directory"><i className="fas fa-users-gear" /> Admin accounts</a>
-        <a className={requestsView ? 'is-current' : ''} href="#requests"><i className="fas fa-life-ring" /> Requests<span className="owner-sidebar-count">{inboxCounts.requests}</span></a>
-        <a className={messagesView ? 'is-current' : ''} href="#messages"><i className="fas fa-envelope" /> Messages<span className="owner-sidebar-count owner-sidebar-message-count" aria-label={`${inboxCounts.messagesIncoming} incoming messages and ${inboxCounts.messagesOutgoing} outgoing messages`}><span><i className="fas fa-arrow-down" aria-hidden="true" /> {inboxCounts.messagesIncoming}</span><span><i className="fas fa-arrow-up" aria-hidden="true" /> {inboxCounts.messagesOutgoing}</span></span></a>
-        <a href="admin.html"><i className="fas fa-briefcase" /> Portfolio workspace</a>
-        <p className="owner-sidebar-label owner-sidebar-label-spaced">COMING SOON</p>
-        <span className="owner-sidebar-disabled"><i className="fas fa-clock-rotate-left" /> Recent activity</span>
-        <span className="owner-sidebar-disabled"><i className="fas fa-building-user" /> Customers</span>
-        <span className="owner-sidebar-disabled"><i className="fas fa-credit-card" /> Plans &amp; billing</span>
-        <span className="owner-sidebar-disabled"><i className="fas fa-chart-line" /> Reports</span>
-        <span className="owner-sidebar-disabled"><i className="fas fa-gear" /> Settings</span>
+  return <main className={`owner-page owner-console${messagesView ? ' owner-messages-page' : ''}${railCollapsed ? ' owner-rail-collapsed' : ''}`} data-theme={theme}>
+    <aside className={`owner-sidebar${navOpen ? ' is-nav-open' : ''}`} aria-label="Platform owner navigation">
+      <div className="owner-sidebar-top">
+        <a className="owner-brand" href="platform-owner.html"><span className="owner-brand-icon"><i className="fas fa-shield-halved" /></span><span>Platform Owner<small>Owner console</small></span></a>
+        <button className="owner-rail-toggle" type="button" aria-pressed={railCollapsed} aria-label={railCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={railCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={() => setRailCollapsed((collapsed) => !collapsed)}><i className={`fas ${railCollapsed ? 'fa-angles-right' : 'fa-angles-left'}`} /></button>
+        <button className="owner-nav-toggle" type="button" aria-expanded={navOpen} aria-controls="owner-sidebar-nav" aria-label={navOpen ? 'Close navigation' : 'Open navigation'} title={navOpen ? 'Close navigation' : 'Open navigation'} onClick={() => { setNavOpen((open) => !open); if (navOpen) { setToolsOpen(false); setHelpOpen(false); } }}><i className={`fas ${navOpen ? 'fa-xmark' : 'fa-bars'}`} /></button>
+      </div>
+      {navOpen && <button className="owner-nav-backdrop" type="button" aria-label="Close navigation" onClick={() => setNavOpen(false)} />}
+      <nav id="owner-sidebar-nav" className="owner-sidebar-nav">
+        <div className="owner-mobile-nav-heading"><p className="owner-sidebar-label">WORKSPACE</p><button className="owner-mobile-nav-close" type="button" aria-label="Close navigation" title="Close navigation" onClick={() => { setNavOpen(false); setToolsOpen(false); setHelpOpen(false); }}><i className="fas fa-xmark" aria-hidden="true" /></button></div>
+        <a className={!directoryView && !requestsView && !messagesView ? 'is-current' : ''} href="platform-owner.html" title="Overview" onClick={collapseOwnerNavigation}><i className="fas fa-chart-pie" /><span>Overview</span></a>
+        <a className={directoryView ? 'is-current' : ''} href="#admin-directory" title="Admin accounts" onClick={collapseOwnerNavigation}><i className="fas fa-users-gear" /><span>Admin accounts</span></a>
+        <a className={requestsView ? 'is-current' : ''} href="#requests" title="Requests" onClick={collapseOwnerNavigation}><i className="fas fa-life-ring" /><span>Requests</span><span className="owner-sidebar-count">{inboxCounts.requests}</span></a>
+        <a className={messagesView ? 'is-current' : ''} href="#messages" title="Chat" onClick={collapseOwnerNavigation}><i className="fas fa-comment" /><span>Chat</span><span className="owner-sidebar-count owner-sidebar-message-count" aria-label={`${inboxCounts.messagesIncoming} incoming messages and ${inboxCounts.messagesOutgoing} outgoing messages`}><span><i className="fas fa-arrow-down" aria-hidden="true" /> {inboxCounts.messagesIncoming}</span><span><i className="fas fa-arrow-up" aria-hidden="true" /> {inboxCounts.messagesOutgoing}</span></span></a>
+        <a href="admin.html" title="Portfolio workspace" onClick={collapseOwnerNavigation}><i className="fas fa-briefcase" /><span>Portfolio workspace</span></a>
+        <button className={`owner-mobile-tools-trigger${toolsOpen ? ' is-active' : ''}`} type="button" aria-expanded={toolsOpen} aria-controls="owner-tools-panel" onClick={() => { setToolsOpen((open) => !open); setHelpOpen(false); }}><i className={`fas ${toolsOpen ? 'fa-xmark' : 'fa-sliders'}`} aria-hidden="true" /><span>Tools</span></button>
+        <button className="owner-mobile-theme-trigger" type="button" aria-pressed={theme === 'dark'} onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}><i className={`fas ${theme === 'dark' ? 'fa-sun' : 'fa-moon'}`} aria-hidden="true" /><span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span></button>
       </nav>
-      <button className="owner-sidebar-signout" type="button" onClick={signOut}><i className="fas fa-arrow-right-from-bracket" /> Sign out</button>
+      <button className="owner-sidebar-signout" type="button" title="Sign out" onClick={signOut}><LogoutIcon /><span>Sign out</span></button>
     </aside>
     <div className="owner-main">
-    <section className="owner-welcome"><div><p className="owner-eyebrow">{requestsView ? 'SYSTEM SUPPORT' : messagesView ? 'ADMIN COMMUNICATIONS' : directoryView ? 'ADMIN ACCESS' : 'CONTROL CENTER'}</p><h1>{requestsView ? 'Support requests' : messagesView ? 'Messages' : directoryView ? 'Manage administrator access' : `Welcome, ${owner.displayName}`}</h1><p>{requestsView ? 'Review sign-in, account activation, setup-link, and password-recovery issues reported by administrators.' : messagesView ? 'Message all customer admins at once or open a private conversation, and control whether each admin can reply.' : directoryView ? 'Invite administrators, set their roles, manage account access, and review recent security activity.' : 'This is your owner dashboard. Get a quick overview, then open Admin accounts to manage invitations, roles, password links, and activity.'}</p></div>{directoryView && <details className="owner-invite" id="invite-admin"><summary><i className="fas fa-user-plus" /> Invite administrator</summary><form onSubmit={submitInvite}>
+    <section className="owner-welcome"><div className="owner-welcome-heading"><div><p className="owner-eyebrow">{requestsView ? 'SYSTEM SUPPORT' : messagesView ? 'CHAT ROOM' : directoryView ? 'ADMIN ACCESS' : 'CONTROL CENTER'}</p><h1>{requestsView ? 'Support requests' : messagesView ? 'Chat' : directoryView ? 'Manage administrator access' : `Welcome, ${owner.displayName}`}</h1><p>{requestsView ? 'Review sign-in, account activation, setup-link, and password-recovery issues reported by administrators.' : messagesView ? 'Chat privately or broadcast to all customer admins, and control whether each admin can reply.' : directoryView ? 'Invite administrators, set their roles, manage account access, and review recent security activity.' : 'This is your owner dashboard. Get a quick overview, then open Admin accounts to manage invitations, roles, password links, and activity.'}</p></div><div className="owner-top-corner">
+        <div className="owner-tools-menu">
+          <button className="owner-tools-button" type="button" aria-expanded={toolsOpen} aria-label={toolsOpen ? 'Close workspace tools' : 'Open workspace tools'} title="Workspace tools" onClick={(event) => { event.stopPropagation(); setToolsOpen((open) => !open); setHelpOpen(false); }}><i className={`fas ${toolsOpen ? 'fa-xmark' : 'fa-sliders'}`} /><span>Tools</span></button>
+          {toolsOpen && <div id="owner-tools-panel" className="owner-tools-panel" role="menu" aria-label="Workspace links">
+            <div className="owner-tools-heading-row"><p className="owner-tools-heading">MORE PAGES &amp; TOOLS</p><button type="button" className="owner-dropdown-close" aria-label="Close workspace tools" title="Close" onClick={() => setToolsOpen(false)}><i className="fas fa-xmark" aria-hidden="true" /></button></div>
+            <button type="button" role="menuitem" disabled title="Coming soon"><i className="fas fa-gear" /> Settings</button>
+            <button type="button" role="menuitem" disabled title="Coming soon"><i className="fas fa-credit-card" /> Plans &amp; billing</button>
+            <button type="button" role="menuitem" disabled title="Coming soon"><i className="fas fa-building-user" /> Customers</button>
+            <button type="button" role="menuitem" disabled title="Coming soon"><i className="fas fa-chart-line" /> Reports</button>
+            <button type="button" role="menuitem" onClick={() => { setToolsOpen(false); setHelpOpen(true); setHelpPage('guide'); }}><i className="fas fa-book" /> Documentation</button>
+            <button type="button" role="menuitem" onClick={() => { setToolsOpen(false); setHelpOpen(true); setHelpPage('faq'); }}><i className="fas fa-circle-question" /> Help &amp; FAQ</button>
+          </div>}
+          {helpOpen && <div className="owner-tools-panel owner-help-panel" role="dialog" aria-label="Help and frequently asked questions">
+            <div className="owner-help-heading"><strong>{helpPage === 'guide' ? 'Documentation' : 'Help & FAQ'}</strong><button type="button" aria-label="Close help" title="Close" onClick={() => setHelpOpen(false)}><i className="fas fa-xmark" /></button></div>
+            <div className="owner-help-tabs" role="tablist">
+              <button type="button" role="tab" aria-selected={helpPage === 'guide'} className={helpPage === 'guide' ? 'is-active' : ''} onClick={() => setHelpPage('guide')}>How it works</button>
+              <button type="button" role="tab" aria-selected={helpPage === 'faq'} className={helpPage === 'faq' ? 'is-active' : ''} onClick={() => setHelpPage('faq')}>FAQ</button>
+            </div>
+            {helpPage === 'guide' ? ownerHelpGuide.map((section) => <article key={section.title}><strong>{section.title}</strong><p>{section.body}</p></article>) : chatHelpTopics.map((topic) => <article key={topic.title}><strong>{topic.title}</strong><p>{topic.body}</p></article>)}
+          </div>}
+        </div>
+        {directoryView && <details className="owner-invite" id="invite-admin"><summary><i className="fas fa-user-plus" /> Invite administrator</summary><form onSubmit={submitInvite}>
       <div className="owner-invite-heading"><div><strong>Invite an administrator</strong><small>Send a secure setup link after confirming the customer’s payment.</small></div><button className="owner-invite-close" type="button" aria-label="Close invitation form" title="Close" onClick={() => { document.getElementById('invite-admin')?.removeAttribute('open'); }}><i className="fas fa-xmark" /></button></div>
       <label>Full name<input required maxLength="120" value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} /></label>
       <label>Email address<input required type="email" maxLength="254" value={form.email} onChange={e => setForm({ ...form, email: e.target.value })} /></label>
       <label>Phone <span>(optional)</span><input maxLength="40" value={form.phone} onChange={e => setForm({ ...form, phone: e.target.value })} /></label>
       <fieldset className="owner-role-checks"><legend>Access roles</legend>{roles.map(([value, label]) => <label key={value}><input type="checkbox" checked={form.roles.includes(value)} onChange={event => setForm(current => ({ ...current, roles: event.target.checked ? [...current.roles, value] : current.roles.filter(role => role !== value) }))} /> <span>{label}</span></label>)}<small>Choose one or more roles. Super admin includes every permission.</small></fieldset>
       <p className="owner-form-hint">The invitation is sent by email. The admin sets their own password from the one-time link.</p><button className="owner-button owner-button-primary" disabled={busy}>{busy ? 'Sending…' : 'Send invitation'}</button>
-    </form></details>}</section>
+    </form></details>}</div></div></section>
 
     {notice && <TimedNotification message={notice} tone="success" onClose={dismissNotice} />}
     {error && <TimedNotification message={error} tone="error" onClose={dismissError} />}

@@ -57,15 +57,25 @@ export default function OwnerMessages({ onMessagesChanged }) {
   }, []);
 
   useEffect(() => {
-    let active = true;
-    loadMessages().catch((requestError) => { if (active) setError(requestError.message); })
-      .finally(() => { if (active) setLoading(false); });
-    return () => { active = false; };
+      let active = true;
+      loadMessages().catch((requestError) => { if (active) setError(requestError.message); })
+        .finally(() => { if (active) setLoading(false); });
+      return () => { active = false; };
   }, [loadMessages]);
 
+  // Keep conversations fresh: poll quietly while the page is visible and no
+  // message is being sent, edited, or managed.
   useEffect(() => {
-    const timer = window.setTimeout(() => setAdminSearch(adminSearchInput.trim().toLowerCase()), 200);
-    return () => window.clearTimeout(timer);
+      const timer = window.setInterval(() => {
+          if (document.hidden || sending || editingMessageId !== null || managingMessages) return;
+          loadMessages().catch(() => {});
+      }, 15000);
+      return () => window.clearInterval(timer);
+  }, [sending, editingMessageId, managingMessages, loadMessages]);
+
+  useEffect(() => {
+      const timer = window.setTimeout(() => setAdminSearch(adminSearchInput.trim().toLowerCase()), 200);
+      return () => window.clearTimeout(timer);
   }, [adminSearchInput]);
 
   const historyRef = useRef(null);
@@ -241,7 +251,7 @@ export default function OwnerMessages({ onMessagesChanged }) {
   const allSelectableSelected = selectableMessages.length > 0 && selectableMessages.every((message) => selectedMessageIds.includes(message.id));
 
   return <section className="owner-card owner-messages" aria-labelledby="owner-messages-title">
-    <header className="owner-messages-heading"><div><p className="owner-eyebrow">ADMIN COMMUNICATIONS</p><h2 id="owner-messages-title">Messages</h2><p>Choose a role to message all active admins in it, or select one admin for a private conversation and set their reply access.</p></div></header>
+    <header className="owner-messages-heading"><div><p className="owner-eyebrow">ADMIN COMMUNICATIONS</p><h2 id="owner-messages-title">Chat</h2><p>Choose a role to message all active admins in it, or select one admin for a private conversation and set their reply access.</p></div></header>
     {error && <p className="owner-message-feedback is-error" role="alert">{error}</p>}
     {notice && <p className="owner-message-feedback" role="status">{notice}</p>}
     <div className="owner-message-layout">

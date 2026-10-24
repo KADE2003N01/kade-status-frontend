@@ -2,6 +2,7 @@ import React, { createContext, useCallback, useContext, useEffect, useMemo, useR
 import { apiFetch, resolveApiAssetUrl } from '../../services/api.js';
 import TimedNotification from '../../components/TimedNotification.jsx';
 import LanguageSelector from '../../components/LanguageSelector.jsx';
+import LogoutIcon from '../../components/LogoutIcon.jsx';
 import { discardMessageAttachments, MessageAttachmentList, MessageAttachmentPicker, uploadMessageAttachment } from '../../components/MessageAttachments.jsx';
 import PhoneNumberField, { isValidInternationalPhone } from '../../components/PhoneNumberField.jsx';
 import { getTranslation, hasTranslation, useLanguage } from '../../context/LanguageContext.jsx';
@@ -297,6 +298,37 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
     const [publishedDocumentCount, setPublishedDocumentCount] = useState(0);
     const [adminAccountCount, setAdminAccountCount] = useState(null);
     const [messageCount, setMessageCount] = useState(0);
+    const [mobileNavOpen, setMobileNavOpen] = useState(false);
+    const [railCollapsed, setRailCollapsed] = useState(() => {
+        try {
+            // Start collapsed on the very first visit so the page opens wide; the
+            // saved preference takes over afterwards.
+            const hasPreference = window.localStorage.getItem('kade-admin-rail') !== null;
+            if (!hasPreference) return true;
+            return window.localStorage.getItem('kade-admin-rail') === 'collapsed';
+        } catch { return true; }
+    });
+
+    useEffect(() => {
+        try { window.localStorage.setItem('kade-admin-rail', railCollapsed ? 'collapsed' : 'open'); } catch { /* ignore */ }
+    }, [railCollapsed]);
+
+    useEffect(() => {
+        if (!mobileNavOpen) return undefined;
+        const closeOnEscape = (event) => { if (event.key === 'Escape') setMobileNavOpen(false); };
+        document.body.style.overflow = 'hidden';
+        window.addEventListener('keydown', closeOnEscape);
+        return () => {
+            document.body.style.overflow = '';
+            window.removeEventListener('keydown', closeOnEscape);
+        };
+    }, [mobileNavOpen]);
+
+    const collapseRailForNavigation = () => {
+        setRailCollapsed(true);
+        setMobileNavOpen(false);
+        try { window.localStorage.setItem('kade-admin-rail', 'collapsed'); } catch { /* Keep navigation available when storage is disabled. */ }
+    };
     const dismissNotification = useCallback(() => setNotification(null), []);
     const initials = session.displayName.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase();
     const hasRole = (role) => (session.roles || [session.role]).includes(role);
@@ -338,7 +370,7 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
         { id: 'homepage', href: 'admin-homepage.html', icon: 'fa-pen-to-square', text: 'Landing page' },
         { id: 'documents', href: 'admin-documents.html', icon: 'fa-file-arrow-up', text: 'Documents' },
         { id: 'profile', href: 'admin-profile.html', icon: 'fa-id-badge', text: 'My profile' },
-        { id: 'messages', href: 'admin-messages.html', icon: 'fa-envelope', text: 'Messages' }
+        { id: 'messages', href: 'admin-messages.html', icon: 'fa-comment', text: 'Messages' }
     ];
     const note = {
         overview: 'Review visitor activity and open the page responsible for each task.',
@@ -363,7 +395,7 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
     }, []);
 
     return (
-        <div className="admin-page">
+        <div className={`admin-page${railCollapsed ? ' admin-rail-collapsed' : ''}`}>
             <TimedNotification message={notification?.message} tone={notification?.tone} onClose={dismissNotification} />
             <header className="admin-topbar">
                 <div className="admin-brand-group">
@@ -377,12 +409,15 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
                     </a>
                 </div>
                 <div className="admin-topbar-actions">
+                    <button className="admin-mobile-nav-toggle" type="button" aria-expanded={mobileNavOpen} aria-controls="admin-sidebar" aria-label={mobileNavOpen ? 'Close navigation' : 'Open navigation'} onClick={() => setMobileNavOpen((open) => !open)}><i className={`fas ${mobileNavOpen ? 'fa-xmark' : 'fa-bars'}`} aria-hidden="true" /></button>
                     <span className="prototype-pill"><span /> ADMIN</span>
                     <a className="admin-view-site" href="../index.html"><i className="fas fa-arrow-up-right-from-square" aria-hidden="true" /> {t('View site')}</a>
                 </div>
             </header>
             <main className="admin-shell">
-                <aside className="admin-sidebar" aria-label="Admin sections">
+                {mobileNavOpen && <button className="admin-nav-backdrop" type="button" aria-label="Close navigation" onClick={() => setMobileNavOpen(false)} />}
+                <aside id="admin-sidebar" className={`admin-sidebar${mobileNavOpen ? ' is-mobile-nav-open' : ''}`} aria-label="Admin sections">
+                    <button className="admin-rail-toggle" type="button" aria-pressed={railCollapsed} aria-label={railCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} title={railCollapsed ? 'Expand sidebar' : 'Collapse sidebar'} onClick={() => setRailCollapsed((collapsed) => !collapsed)}><i className={`fas ${railCollapsed ? 'fa-angles-right' : 'fa-angles-left'}`} aria-hidden="true" /></button>
                     <p className="admin-nav-label">{t('WORKSPACE')}</p>
                     {links.filter((link) => {
                         if (link.id === 'messages') return true;
@@ -390,17 +425,17 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
                         const permissions = { downloads: 'download_manager', homepage: 'content_manager', documents: 'document_manager', profile: 'profile_manager' };
                         return hasRole(permissions[link.id]);
                     }).map((link) => (
-                        <a key={link.id} className={`admin-nav-link${active === link.id ? ' active' : ''}`} href={link.href}>
+                        <a key={link.id} className={`admin-nav-link${active === link.id ? ' active' : ''}`} href={link.href} title={t(link.text)} onClick={collapseRailForNavigation}>
                             <i className={`fas ${link.icon}`} aria-hidden="true" />
                             {link.id === 'accounts'
-                                ? <span className="admin-nav-link-copy"><span>{t(link.text)}</span><span className="nav-count admin-account-count" aria-label={t('Administrator count', { count: adminAccountCount ?? 0 })}>{adminAccountCount === null ? '…' : adminAccountCount}</span></span>
+                                ? <span className="admin-nav-link-copy"><span>{t(link.text)}</span><span className={`nav-count admin-account-count${railCollapsed ? ' is-rail-count' : ''}`} aria-label={t('Administrator count', { count: adminAccountCount ?? 0 })}>{adminAccountCount === null ? '…' : adminAccountCount}</span></span>
                                 : t(link.text)}
-                            {link.id === 'downloads' && <span className="nav-count">{downloadCount}</span>}
-                            {link.id === 'documents' && <span className="nav-count" aria-label={`${publishedDocumentCount} published CVs and certificates`}>{publishedDocumentCount}</span>}
-                            {link.id === 'messages' && <span className="nav-count" aria-label={`${messageCount} unread messages`}>{messageCount}</span>}
+                            {link.id === 'downloads' && <span className={`nav-count${railCollapsed ? ' is-rail-count' : ''}`} aria-label={`${downloadCount} visitor download requests`}>{downloadCount}</span>}
+                            {link.id === 'documents' && <span className={`nav-count${railCollapsed ? ' is-rail-count' : ''}`} aria-label={`${publishedDocumentCount} published CVs and certificates`}>{publishedDocumentCount}</span>}
+                            {link.id === 'messages' && <span className={`nav-count${messageCount > 0 ? ' has-new' : ''}${railCollapsed ? ' is-rail-count' : ''}`} aria-label={`${messageCount} unread messages`}>{messageCount > 0 ? messageCount : null}</span>}
                         </a>
                     ))}
-                    {hasRole('platform_owner') && <a className="admin-nav-link" href="platform-owner.html"><i className="fas fa-shield-halved" aria-hidden="true" /><span>{t('Control Admins')}</span></a>}
+                    {hasRole('platform_owner') && <a className="admin-nav-link" href="platform-owner.html" title={t('Control Admins')} onClick={collapseRailForNavigation}><i className="fas fa-shield-halved" aria-hidden="true" /><span>{t('Control Admins')}</span></a>}
                     <AdminThemeToggle />
                     <LanguageSelector />
                     <div className="admin-sidebar-note">
@@ -415,8 +450,8 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
                     </div>
                     <div className="admin-sidebar-spacer" />
                     {logoutError && <p className="form-feedback error" role="status">{logoutError}</p>}
-                    <button className="admin-logout" type="button" onClick={logout} disabled={loggingOut}>
-                        <i className="fas fa-right-from-bracket" aria-hidden="true" /> {loggingOut ? t('Logging out…') : t('Log out')}
+                    <button className="admin-logout" type="button" title="Log out" aria-label="Log out" onClick={logout} disabled={loggingOut}>
+                        <LogoutIcon /> {loggingOut ? t('Logging out…') : t('Log out')}
                     </button>
                 </aside>
                 <div className="admin-content">
@@ -984,6 +1019,12 @@ function AdminMessagesContent() {
     const [error, setError] = useState('');
     const owner = (session?.roles || [session?.role]).includes('platform_owner');
 
+    // The super admin has a dedicated message console (broadcasts, reply access,
+    // message management). Sending them here would only show a reduced chat.
+    useEffect(() => {
+        if (owner) window.location.replace('platform-owner.html#messages');
+    }, [owner]);
+
     const loadMessages = useCallback(async () => {
         const response = await apiRequest('/messages', { silentNotification: true });
         const result = await responseJson(response, 'Could not load messages.');
@@ -997,6 +1038,17 @@ function AdminMessagesContent() {
         loadMessages().catch((requestError) => setError(displayError(requestError, 'Could not load messages.')))
             .finally(() => setLoading(false));
     }, [loadMessages]);
+
+    // Keep the conversation current: poll quietly, but never while a message is
+    // being sent or while the tab is hidden in the background.
+    useEffect(() => {
+        if (owner) return undefined;
+        const timer = window.setInterval(() => {
+            if (document.hidden || sending) return;
+            loadMessages().catch(() => {});
+        }, 15000);
+        return () => window.clearInterval(timer);
+    }, [owner, sending, loadMessages]);
 
     const activeThread = threads.find((thread) => thread.id === activeThreadId);
     const activeMessages = messages.filter((message) => message.threadId === activeThreadId);

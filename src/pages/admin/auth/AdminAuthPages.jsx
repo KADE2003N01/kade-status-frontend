@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { apiFetch } from '../../../services/api.js';
 import { getStoredSessionToken, storeSessionToken } from '../../../services/adminSession.js';
 import LanguageSelector from '../../../components/LanguageSelector.jsx';
+import LogoutIcon from '../../../components/LogoutIcon.jsx';
 import { useLanguage } from '../../../context/LanguageContext.jsx';
 import './AdminAuthPages.css';
 
@@ -87,8 +88,10 @@ export function AdminLoginPage() {
       </form>
       <a className="auth-recovery-link" href="admin-reset-password.html">{t('Forgot your password?')}</a>
       <p className="auth-onboarding-note">{t('New administrators join by invitation. If you have already been invited but cannot find your setup email, request another link.')}</p>
-      <a className="auth-recovery-link" href="admin-setup-account.html">{t('Resend my setup link')}</a>
-      <a className="auth-recovery-link" href="admin-support.html">Need help accessing your admin account? Send a support request.</a>
+      <a className="auth-recovery-link" href="admin-setup-account.html"><i className="fas fa-user-plus" aria-hidden="true" /> {t('Resend my setup link')}</a>
+      <a className="auth-recovery-link" href="admin-support.html"><i className="fas fa-life-ring" aria-hidden="true" /> Need help accessing your admin account? Send a support request.</a>
+      <p className="auth-footnote auth-signout-hint"><LogoutIcon /> {t('Signed in before? Use the Log out symbol at the bottom of the workspace sidebar to end your session safely.')}</p>
+      <p className="auth-footnote auth-rail-hint"><i className="fas fa-angles-left" aria-hidden="true" /> {t('Tip: the « button at the top of the sidebar shrinks it to icons, giving the page more room. Click » to bring the labels back.')}</p>
       <p className="auth-footnote"><i className="fas fa-lock" aria-hidden="true" /> {t('Secure sign-in · Administrator access only')}</p>
     </section>
     <footer className="auth-footer"><p>© {new Date().getFullYear()} · {t('Administrator access')}</p><p>Powered by KadeTech | <a href="tel:+250788950833">Contact</a></p></footer>
