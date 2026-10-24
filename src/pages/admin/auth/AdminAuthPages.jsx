@@ -22,7 +22,9 @@ function AuthFeedback({ children, error = false }) {
 
 export function AdminLoginPage() {
   const { t } = useLanguage();
+  const forceSignIn = new URLSearchParams(window.location.search).get('force') === '1';
   const destination = loginDestination();
+  const [clearingSession, setClearingSession] = useState(forceSignIn);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -32,6 +34,15 @@ export function AdminLoginPage() {
 
   useEffect(() => {
     let current = true;
+    if (forceSignIn) {
+      storeSessionToken('');
+      setFeedback('Your previous session was cleared. Sign in again to continue.');
+      setIsError(true);
+      apiFetch('/auth/logout', { method: 'POST', credentials: 'include' })
+        .catch(() => {})
+        .finally(() => { if (current) setClearingSession(false); });
+      return () => { current = false; };
+    }
     if (new URLSearchParams(window.location.search).get('session') === 'unavailable') {
       setFeedback('Your previous session could not be verified. Sign in again.');
       setIsError(true);
@@ -51,10 +62,11 @@ export function AdminLoginPage() {
       if (current) { setFeedback('The sign-in service could not be reached. Check your connection and try again.'); setIsError(true); }
     });
     return () => { current = false; };
-  }, [destination]);
+  }, [destination, forceSignIn]);
 
   async function submit(event) {
     event.preventDefault(); setSubmitting(true); setFeedback(''); setIsError(false);
+    if (clearingSession) { setSubmitting(false); return; }
     try {
       const response = await apiFetch('/auth/login', {
         method: 'POST', credentials: 'include', headers: { 'Content-Type': 'application/json' },
@@ -84,7 +96,7 @@ export function AdminLoginPage() {
         <label htmlFor="admin-email">{t('Email address')}</label><div className="auth-input-wrap"><i className="far fa-envelope" aria-hidden="true" /><input id="admin-email" name="username" type="email" autoComplete="email" maxLength={254} placeholder="you@example.com" required value={email} onChange={event => setEmail(event.target.value)} /></div>
         <label htmlFor="admin-password">{t('Password')}</label><div className="auth-input-wrap"><i className="fas fa-key" aria-hidden="true" /><input id="admin-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete="current-password" maxLength={1024} placeholder={t('Enter your password')} required value={password} onChange={event => setPassword(event.target.value)} /><button type="button" className="auth-password-visibility" aria-label={showPassword ? t('Hide password') : t('Show password')} onClick={() => setShowPassword(value => !value)}><i className={`far ${showPassword ? 'fa-eye-slash' : 'fa-eye'}`} aria-hidden="true" /></button></div>
         <AuthFeedback error={isError}>{feedback}</AuthFeedback>
-        <button className="auth-submit" type="submit" disabled={submitting}><span>{submitting ? t('Checking credentials…') : t('Sign in to admin')}</span><i className={`fas ${submitting ? 'fa-spinner fa-spin' : 'fa-arrow-right'}`} aria-hidden="true" /></button>
+        <button className="auth-submit" type="submit" disabled={submitting || clearingSession}><span>{clearingSession ? t('Checking credentials…') : submitting ? t('Checking credentials…') : t('Sign in to admin')}</span><i className={`fas ${submitting || clearingSession ? 'fa-spinner fa-spin' : 'fa-arrow-right'}`} aria-hidden="true" /></button>
       </form>
       <a className="auth-recovery-link" href="admin-reset-password.html">{t('Forgot your password?')}</a>
       <p className="auth-onboarding-note">{t('New administrators join by invitation. If you have already been invited but cannot find your setup email, request another link.')}</p>

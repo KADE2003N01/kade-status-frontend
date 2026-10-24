@@ -84,6 +84,7 @@ export default function OwnerMessages({ onMessagesChanged }) {
   const activeAdmin = threads.find((thread) => String(thread.adminId) === String(activeAdminId));
   const mutedAdmins = threads.filter((thread) => thread.replyAllowed === false);
   const activeMessages = activeAdmin?.id ? messages.filter((message) => message.threadId === activeAdmin.id) : [];
+  const latestUnreadForActiveAdmin = activeMessages.find((message) => !message.deletedAt && message.senderRole !== 'platform_owner' && !message.isRead);
   const searchedThreads = threads.filter((thread) =>
     `${thread.adminName || ''} ${thread.adminEmail || ''}`.toLowerCase().includes(adminSearch)
       && (roleFilter === 'all' || (thread.adminRoles || []).includes(roleFilter))
@@ -112,6 +113,13 @@ export default function OwnerMessages({ onMessagesChanged }) {
     const history = historyRef.current;
     if (history) history.scrollTop = 0;
   }, [activeAdminId, activeMessages.length]);
+
+  useEffect(() => {
+    if (!activeAdmin?.id || !latestUnreadForActiveAdmin) return;
+    messageRequest(`/threads/${activeAdmin.id}/read`, { method: 'POST' })
+      .then(() => Promise.all([loadMessages(), onMessagesChanged?.()]))
+      .catch(() => {});
+  }, [activeAdmin?.id, latestUnreadForActiveAdmin?.id, loadMessages, onMessagesChanged]);
 
   useEffect(() => {
     if (editingMessageId !== null) composeRef.current?.focus();
@@ -262,9 +270,12 @@ export default function OwnerMessages({ onMessagesChanged }) {
           {(adminSearch || roleFilter !== 'all') && <button type="button" className="owner-message-filter-clear" onClick={() => { setAdminSearchInput(''); setRoleFilter('all'); setRecipientRole(''); setRecipientMode((mode) => mode === 'role' ? 'all' : mode); }}><i className="fas fa-xmark" /> Clear</button>}
         </div>
         <h3>{adminSearch || roleFilter !== 'all' ? 'Matching admins' : 'All admins'} <span>{adminSearch || roleFilter !== 'all' ? `${visibleThreads.length} of ${searchedThreads.length}` : `${visibleThreads.length} · scroll for more`}</span></h3>
-        <div className="owner-message-admin-list">{loading ? <p className="owner-message-empty-state">Loading admins…</p> : visibleThreads.length ? visibleThreads.map((thread) => <button type="button" key={thread.adminId} className={`owner-message-admin${String(thread.adminId) === String(activeAdminId) ? ' is-active' : ''}`} onClick={() => { setActiveAdminId(String(thread.adminId)); setRecipientMode('selected'); setManagingMessages(false); setSelectedMessageIds([]); setNotice(''); }}>
-          <span className="owner-message-avatar">{thread.adminName?.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</span><span className="owner-message-admin-copy"><strong>{thread.adminName}</strong><small>{(thread.adminRoles || []).map((value) => roleLabels[value] || value).join(', ') || thread.adminEmail}</small></span><i className={`owner-message-status ${thread.adminStatus}`} title={thread.adminStatus} />
-        </button>) : <p className="owner-message-empty-state">{threads.length ? 'No admins match your search or role filter.' : 'No admin accounts are available.'}</p>}</div>
+        <div className="owner-message-admin-list">{loading ? <p className="owner-message-empty-state">Loading admins…</p> : visibleThreads.length ? visibleThreads.map((thread) => {
+          const unreadForThread = messages.filter((message) => message.threadId === thread.id && !message.deletedAt && message.senderRole !== 'platform_owner' && !message.isRead).length;
+          return <button type="button" key={thread.adminId} className={`owner-message-admin${String(thread.adminId) === String(activeAdminId) ? ' is-active' : ''}${unreadForThread ? ' has-unread' : ''}`} onClick={() => { setActiveAdminId(String(thread.adminId)); setRecipientMode('selected'); setManagingMessages(false); setSelectedMessageIds([]); setNotice(''); }}>
+          <span className="owner-message-avatar">{thread.adminName?.split(/\s+/).map((part) => part[0]).join('').slice(0, 2).toUpperCase()}</span><span className="owner-message-admin-copy"><strong>{thread.adminName}</strong><small>{(thread.adminRoles || []).map((value) => roleLabels[value] || value).join(', ') || thread.adminEmail}</small></span>{unreadForThread > 0 && <span className="owner-message-unread" aria-label={`${unreadForThread} unread messages`}>{unreadForThread}</span>}<i className={`owner-message-status ${thread.adminStatus}`} title={thread.adminStatus} />
+        </button>;
+        }) : <p className="owner-message-empty-state">{threads.length ? 'No admins match your search or role filter.' : 'No admin accounts are available.'}</p>}</div>
       </aside>
       <div className="owner-message-workspace">
         <header className="owner-message-conversation-heading"><div><strong>{recipientMode === 'all' ? `Broadcast · ${activeRecipients} active admin${activeRecipients === 1 ? '' : 's'}` : recipientMode === 'role' ? `${roleLabels[recipientRole] || recipientRole} · ${activeRecipients} active admin${activeRecipients === 1 ? '' : 's'}` : activeAdmin?.adminName || 'Choose an admin'}</strong><small>{recipientMode === 'all' ? 'One copy lands in every active admin conversation' : recipientMode === 'role' ? `Message all active ${roleLabels[recipientRole] || recipientRole} admins` : activeAdmin?.adminEmail || 'Search and select an account to open its conversation'}</small></div>

@@ -107,7 +107,7 @@ export default function PlatformOwnerPage() {
 
   function handleOutsideClick(event) {
     if (!toolsOpen && !helpOpen) return;
-    if (event.target.closest?.('.owner-tools-menu, .owner-mobile-tools-trigger')) return;
+    if (event.target.closest?.('.owner-tools-menu')) return;
     setToolsOpen(false);
     setHelpOpen(false);
   }
@@ -362,7 +362,7 @@ export default function PlatformOwnerPage() {
   }
 
   if (loading) return <main className="owner-page owner-loading">Checking super-admin access…</main>;
-  if (!owner) return <main className="owner-page"><section className="owner-card owner-denied"><h1>Super-admin access required</h1><p>{error || 'Sign in with the super-admin account to continue.'}</p><a className="owner-button owner-button-primary" href="admin-login.html?next=platform-owner.html">Go to sign in</a></section></main>;
+  if (!owner) return <main className="owner-page"><section className="owner-card owner-denied"><h1>Super-admin access required</h1><p>{error || 'Sign in with the super-admin account to continue.'}</p><a className="owner-button owner-button-primary" href="admin-login.html?next=platform-owner.html&force=1">Go to sign in</a></section></main>;
 
   return <main className={`owner-page owner-console${messagesView ? ' owner-messages-page' : ''}${railCollapsed ? ' owner-rail-collapsed' : ''}`} data-theme={theme}>
     <aside className={`owner-sidebar${navOpen ? ' is-nav-open' : ''}`} aria-label="Platform owner navigation">
@@ -377,17 +377,10 @@ export default function PlatformOwnerPage() {
         <a className={!directoryView && !requestsView && !messagesView ? 'is-current' : ''} href="platform-owner.html" title="Overview" onClick={collapseOwnerNavigation}><i className="fas fa-chart-pie" /><span>Overview</span></a>
         <a className={directoryView ? 'is-current' : ''} href="#admin-directory" title="Admin accounts" onClick={collapseOwnerNavigation}><i className="fas fa-users-gear" /><span>Admin accounts</span></a>
         <a className={requestsView ? 'is-current' : ''} href="#requests" title="Requests" onClick={collapseOwnerNavigation}><i className="fas fa-life-ring" /><span>Requests</span><span className="owner-sidebar-count">{inboxCounts.requests}</span></a>
-        <a className={messagesView ? 'is-current' : ''} href="#messages" title="Chat" onClick={collapseOwnerNavigation}><i className="fas fa-comment" /><span>Chat</span><span className="owner-sidebar-count owner-sidebar-message-count" aria-label={`${inboxCounts.messagesIncoming} incoming messages and ${inboxCounts.messagesOutgoing} outgoing messages`}><span><i className="fas fa-arrow-down" aria-hidden="true" /> {inboxCounts.messagesIncoming}</span><span><i className="fas fa-arrow-up" aria-hidden="true" /> {inboxCounts.messagesOutgoing}</span></span></a>
+        <a className={messagesView ? 'is-current' : ''} href="#messages" title="Chat" onClick={collapseOwnerNavigation}><i className="fas fa-comment" /><span>Chat</span><span className="owner-sidebar-count owner-sidebar-message-count" aria-label={`${inboxCounts.messagesIncoming} incoming messages and ${inboxCounts.messagesOutgoing} outgoing messages`}><span><i className="fas fa-arrow-down" aria-hidden="true" /> {inboxCounts.messagesIncoming}</span><span><i className="fas fa-arrow-up" aria-hidden="true" /> {inboxCounts.messagesOutgoing}</span></span>{inboxCounts.messages > 0 && <span className="owner-sidebar-unread-badge" aria-label={`${inboxCounts.messages} unread messages`}>{inboxCounts.messages}</span>}</a>
         <a href="admin.html" title="Portfolio workspace" onClick={collapseOwnerNavigation}><i className="fas fa-briefcase" /><span>Portfolio workspace</span></a>
-        <button className={`owner-mobile-tools-trigger${toolsOpen ? ' is-active' : ''}`} type="button" aria-expanded={toolsOpen} aria-controls="owner-tools-panel" onClick={() => { setToolsOpen((open) => !open); setHelpOpen(false); }}><i className={`fas ${toolsOpen ? 'fa-xmark' : 'fa-sliders'}`} aria-hidden="true" /><span>Tools</span></button>
-        <button className="owner-mobile-theme-trigger" type="button" aria-pressed={theme === 'dark'} onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}><i className={`fas ${theme === 'dark' ? 'fa-sun' : 'fa-moon'}`} aria-hidden="true" /><span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span></button>
-        <button className="owner-sidebar-signout" type="button" title="Sign out" onClick={signOut}><LogoutIcon /><span>Sign out</span></button>
-      </nav>
-    </aside>
-    <div className="owner-main">
-    <section className="owner-welcome"><div className="owner-welcome-heading"><div><p className="owner-eyebrow">{requestsView ? 'SYSTEM SUPPORT' : messagesView ? 'CHAT ROOM' : directoryView ? 'ADMIN ACCESS' : 'CONTROL CENTER'}</p><h1>{requestsView ? 'Support requests' : messagesView ? 'Chat' : directoryView ? 'Manage administrator access' : `Welcome, ${owner.displayName}`}</h1><p>{requestsView ? 'Review sign-in, account activation, setup-link, and password-recovery issues reported by administrators.' : messagesView ? 'Chat privately or broadcast to all customer admins, and control whether each admin can reply.' : directoryView ? 'Invite administrators, set their roles, manage account access, and review recent security activity.' : 'This is your owner dashboard. Get a quick overview, then open Admin accounts to manage invitations, roles, password links, and activity.'}</p></div><div className="owner-top-corner">
-        <div className="owner-tools-menu">
-          <button className="owner-tools-button" type="button" aria-expanded={toolsOpen} aria-label={toolsOpen ? 'Close workspace tools' : 'Open workspace tools'} title="Workspace tools" onClick={(event) => { event.stopPropagation(); setToolsOpen((open) => !open); setHelpOpen(false); }}><i className={`fas ${toolsOpen ? 'fa-xmark' : 'fa-sliders'}`} /><span>Tools</span></button>
+        <div className={`owner-tools-menu owner-sidebar-tools${toolsOpen ? ' is-open' : ''}`}>
+          <button className="owner-tools-button" type="button" aria-expanded={toolsOpen} aria-label={toolsOpen ? 'Close workspace tools' : 'Open workspace tools'} title="Workspace tools" onClick={() => { setToolsOpen((open) => !open); setHelpOpen(false); }}><i className={`fas ${toolsOpen ? 'fa-xmark' : 'fa-sliders'}`} aria-hidden="true" /><span>Tools</span></button>
           {toolsOpen && <div id="owner-tools-panel" className="owner-tools-panel" role="menu" aria-label="Workspace links">
             <div className="owner-tools-heading-row"><p className="owner-tools-heading">MORE PAGES &amp; TOOLS</p><button type="button" className="owner-dropdown-close" aria-label="Close workspace tools" title="Close" onClick={() => setToolsOpen(false)}><i className="fas fa-xmark" aria-hidden="true" /></button></div>
             <button type="button" role="menuitem" disabled title="Coming soon"><i className="fas fa-gear" /> Settings</button>
@@ -406,6 +399,12 @@ export default function PlatformOwnerPage() {
             {helpPage === 'guide' ? ownerHelpGuide.map((section) => <article key={section.title}><strong>{section.title}</strong><p>{section.body}</p></article>) : chatHelpTopics.map((topic) => <article key={topic.title}><strong>{topic.title}</strong><p>{topic.body}</p></article>)}
           </div>}
         </div>
+        <button className="owner-mobile-theme-trigger" type="button" aria-pressed={theme === 'dark'} onClick={() => setTheme((current) => current === 'dark' ? 'light' : 'dark')}><i className={`fas ${theme === 'dark' ? 'fa-sun' : 'fa-moon'}`} aria-hidden="true" /><span>{theme === 'dark' ? 'Light mode' : 'Dark mode'}</span></button>
+        <button className="owner-sidebar-signout" type="button" title="Sign out" onClick={signOut}><LogoutIcon /><span>Sign out</span></button>
+      </nav>
+    </aside>
+    <div className="owner-main">
+    <section className="owner-welcome"><div className="owner-welcome-heading"><div><p className="owner-eyebrow">{requestsView ? 'SYSTEM SUPPORT' : messagesView ? 'CHAT ROOM' : directoryView ? 'ADMIN ACCESS' : 'CONTROL CENTER'}</p><h1>{requestsView ? 'Support requests' : messagesView ? 'Chat' : directoryView ? 'Manage administrator access' : `Welcome, ${owner.displayName}`}</h1><p>{requestsView ? 'Review sign-in, account activation, setup-link, and password-recovery issues reported by administrators.' : messagesView ? 'Chat privately or broadcast to all customer admins, and control whether each admin can reply.' : directoryView ? 'Invite administrators, set their roles, manage account access, and review recent security activity.' : 'This is your owner dashboard. Get a quick overview, then open Admin accounts to manage invitations, roles, password links, and activity.'}</p></div><div className="owner-top-corner">
         {directoryView && <details className="owner-invite" id="invite-admin"><summary><i className="fas fa-user-plus" /> Invite administrator</summary><form onSubmit={submitInvite}>
       <div className="owner-invite-heading"><div><strong>Invite an administrator</strong><small>Send a secure setup link after confirming the customer’s payment.</small></div><button className="owner-invite-close" type="button" aria-label="Close invitation form" title="Close" onClick={() => { document.getElementById('invite-admin')?.removeAttribute('open'); }}><i className="fas fa-xmark" /></button></div>
       <label>Full name<input required maxLength="120" value={form.displayName} onChange={e => setForm({ ...form, displayName: e.target.value })} /></label>
