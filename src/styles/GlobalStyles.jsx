@@ -5081,6 +5081,21 @@ fieldset.profile-image-visibility-actions {
   .admin-topbar-actions { gap: 8px; }
   .admin-topbar-actions .prototype-pill { display: none; }
   .admin-mobile-nav-toggle { order: -1; }
+  .admin-view-site {
+    display: grid;
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    place-items: center;
+    padding: 0;
+    border: 1px solid var(--border-strong);
+    border-radius: 10px;
+    background: var(--panel);
+    color: var(--accent);
+    font-size: 0;
+  }
+  .admin-view-site span { display: none; }
+  .admin-view-site i { font-size: 0.85rem; }
 }
 
 @keyframes admin-backdrop-in {

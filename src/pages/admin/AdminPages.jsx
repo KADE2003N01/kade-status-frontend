@@ -415,7 +415,7 @@ function AdminFrame({ session, logout, logoutError, loggingOut, active, download
                 <div className="admin-topbar-actions">
                     <button className="admin-mobile-nav-toggle" type="button" aria-expanded={mobileNavOpen} aria-controls="admin-sidebar" aria-label={mobileNavOpen ? 'Close navigation' : 'Open navigation'} onClick={() => setMobileNavOpen((open) => !open)}><i className={`fas ${mobileNavOpen ? 'fa-xmark' : 'fa-bars'}`} aria-hidden="true" /></button>
                     <span className="prototype-pill"><span /> ADMIN</span>
-                    <a className="admin-view-site" href="../index.html"><i className="fas fa-arrow-up-right-from-square" aria-hidden="true" /> {t('View site')}</a>
+                    <a className="admin-view-site" href="../index.html" aria-label={t('View site')} title={t('View site')}><i className="fas fa-arrow-up-right-from-square" aria-hidden="true" /><span>{t('View site')}</span></a>
                 </div>
             </header>
             <main className="admin-shell">
